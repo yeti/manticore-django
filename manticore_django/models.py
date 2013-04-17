@@ -61,9 +61,11 @@ def process_thumbnail(instance, sizes, crop=False):
                 clip_amount = int((int(height * original_ratio) - width) / 2)
                 im = im.crop((clip_amount, 0, width + clip_amount, height))
 
-        name = filename + ".jpg"
+        name = "%s.jpg" % filename
         tempfile_io = StringIO.StringIO()
-        im.save(tempfile_io, format='JPEG')
+        if im.mode != "RGB":
+            im = im.convert("RGB")
+        im.save(tempfile_io, 'JPEG')
         temp_file = InMemoryUploadedFile(tempfile_io, None, name, 'image/jpeg', tempfile_io.len, None)
         getattr(instance, size_name).save(name, temp_file)
 

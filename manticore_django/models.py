@@ -1,4 +1,5 @@
 import StringIO
+import os
 from PIL import Image
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.db import models
@@ -31,12 +32,12 @@ def resize_model_photos(sender, **kwargs):
 
 
 def process_thumbnail(instance, sizes, crop=False):
-    photo_path = str(instance.original_photo.path)  # this returns the full system path to the original file
-    original_image = Image.open(photo_path)  # open the image using PIL
+    # photo_path = str(instance.original_photo.path)  # this returns the full system path to the original file
+    original_image = Image.open(instance.original_photo)  # open the image using PIL
 
     # pull a few variables out of that full path
-    extension = photo_path.rsplit('.', 1)[1]  # the file extension
-    filename = photo_path.rsplit('/', 1)[1].rsplit('.', 1)[0]  # the file name only (minus path or extension)
+    filename = os.path.basename(instance.original_photo.name).rsplit('.', 1)[0]
+    extension = os.path.basename(instance.original_photo.name).rsplit('.', 1)[1]  # the file extension
 
     # use the file extension to determine if the image is valid before proceeding
     if extension not in ['jpg', 'jpeg', 'gif', 'png']:

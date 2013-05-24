@@ -36,6 +36,7 @@ env.user = conf.get("SSH_USER", getuser())
 env.password = conf.get("SSH_PASS", None)
 env.key_filename = conf.get("SSH_KEY_PATH", None)
 env.hosts = conf.get("HOSTS", [])
+env.servers = conf.get("SERVERS", ['application','database'])
 
 env.proj_name = conf.get("PROJECT_NAME", os.getcwd().split(os.sep)[-1])
 env.venv_home = conf.get("VIRTUALENV_HOME", "/home/%s" % env.user)
@@ -107,8 +108,8 @@ def project():
     """
     Runs commands within the project's directory.
     """
-    with virtualenv():
-        with cd(env.proj_dirname):
+    with cd(env.proj_dirname):
+        with virtualenv():
             yield
 
 
@@ -339,11 +340,14 @@ def install():
             sudo("update-locale %s" % locale)
             run("exit")
     sudo("apt-get update -y -q")
-    apt("nginx libjpeg-dev python-dev python-setuptools git-core "
-        "postgresql libpq-dev memcached supervisor")
-    sudo("easy_install pip")
-    sudo("pip install virtualenv mercurial")
-
+    apt("git-core supervisor")
+    if "database" in env.servers:
+        apt("postgresql")
+    if "application" in env.servers:
+        apt("nginx libjpeg-dev python-dev python-setuptools "
+            "libpq-dev memcached ")
+        sudo("easy_install pip")
+        sudo("pip install virtualenv mercurial")
 
 @task
 @log_call
@@ -355,76 +359,80 @@ def create():
     live host.
     """
 
-    # Create virtualenv
-    with cd(env.venv_home):
-        if exists(env.proj_name):
-            prompt = raw_input("\nVirtualenv exists: %s\nWould you like "
-                               "to replace it? (yes/no) " % env.proj_name)
-            if prompt.lower() != "yes":
-                print "\nAborting!"
-                return False
-            remove()
-        run("virtualenv %s --distribute" % env.proj_name)
-        vcs = "git" if env.git else "hg"
-        run("%s clone %s %s" % (vcs, env.repo_url, env.proj_path))
-        with project():
-            run("git submodule init")
-            run("git submodule update")
+    if "application" in env.servers:
+        # Create virtualenv
+        with cd(env.venv_home):
+            if exists(env.proj_name):
+                prompt = raw_input("\nVirtualenv exists: %s\nWould you like "
+                                   "to replace it? (yes/no) " % env.proj_name)
+                if prompt.lower() != "yes":
+                    print "\nAborting!"
+                    return False
+                remove()
+            run("virtualenv %s --distribute" % env.proj_name)
+            vcs = "git" if env.git else "hg"
+            run("%s clone %s %s" % (vcs, env.repo_url, env.proj_path))
+            with project():
+                run("git submodule init")
+                run("git submodule update")
 
-    # Create DB and DB user.
-    pw = db_pass()
-    user_sql_args = (env.proj_name, pw.replace("'", "\'"))
-    user_sql = "CREATE USER %s WITH ENCRYPTED PASSWORD '%s';" % user_sql_args
-    psql(user_sql, show=False)
-    shadowed = "*" * len(pw)
-    print_command(user_sql.replace("'%s'" % pw, "'%s'" % shadowed))
-    psql("CREATE DATABASE %s WITH OWNER %s ENCODING = 'UTF8' "
-         "LC_CTYPE = '%s' LC_COLLATE = '%s' TEMPLATE template0;" %
-         (env.proj_name, env.proj_name, env.locale, env.locale))
+    if "database" in env.servers:
+        # Create DB and DB user.
+        pw = db_pass()
+        user_sql_args = (env.proj_name, pw.replace("'", "\'"))
+        user_sql = "CREATE USER %s WITH ENCRYPTED PASSWORD '%s';" % user_sql_args
+        psql(user_sql, show=False)
+        shadowed = "*" * len(pw)
+        print_command(user_sql.replace("'%s'" % pw, "'%s'" % shadowed))
+        psql("CREATE DATABASE %s WITH OWNER %s ENCODING = 'UTF8' "
+             "LC_CTYPE = '%s' LC_COLLATE = '%s' TEMPLATE template0;" %
+             (env.proj_name, env.proj_name, env.locale, env.locale))
 
-    # Set up SSL certificate.
-    conf_path = "/etc/nginx/conf"
-    if not exists(conf_path):
-        sudo("mkdir %s" % conf_path)
-    with cd(conf_path):
-        crt_file = env.proj_name + ".crt"
-        key_file = env.proj_name + ".key"
-        if not exists(crt_file) and not exists(key_file):
-            try:
-                crt_local, = glob(join("deploy", "*.crt"))
-                key_local, = glob(join("deploy", "*.key"))
-            except ValueError:
-                parts = (crt_file, key_file, env.live_host)
-                sudo("openssl req -new -x509 -nodes -out %s -keyout %s "
-                     "-subj '/CN=%s' -days 3650" % parts)
-            else:
-                upload_template(crt_local, crt_file, use_sudo=True)
-                upload_template(key_local, key_file, use_sudo=True)
+    if "application" in env.servers:
+        # Set up SSL certificate.
+        conf_path = "/etc/nginx/conf"
+        if not exists(conf_path):
+            sudo("mkdir %s" % conf_path)
+        with cd(conf_path):
+            crt_file = env.proj_name + ".crt"
+            key_file = env.proj_name + ".key"
+            if not exists(crt_file) and not exists(key_file):
+                try:
+                    crt_local, = glob(join("deploy", "*.crt"))
+                    key_local, = glob(join("deploy", "*.key"))
+                except ValueError:
+                    parts = (crt_file, key_file, env.live_host)
+                    sudo("openssl req -new -x509 -nodes -out %s -keyout %s "
+                         "-subj '/CN=%s' -days 3650" % parts)
+                else:
+                    upload_template(crt_local, crt_file, use_sudo=True)
+                    upload_template(key_local, key_file, use_sudo=True)
 
     # Set up project.
-    upload_template_and_reload("settings")
-    with project():
-        if env.reqs_path:
-            pip("-r %s/%s" % (env.proj_path, env.reqs_path))
-        pip("gunicorn setproctitle south psycopg2 "
-            "django-compressor python-memcached")
-        manage("createdb --noinput --nodata")
-        python("from django.conf import settings;"
-               "from django.contrib.sites.models import Site;"
-               "site, _ = Site.objects.get_or_create(id=settings.SITE_ID);"
-               "site.domain = '" + env.live_host + "';"
-               "site.save();")
-        if env.admin_pass:
-            pw = env.admin_pass
-            user_py = ("from mezzanine.utils.models import get_user_model;"
-                       "User = get_user_model();"
-                       "u, _ = User.objects.get_or_create(username='admin');"
-                       "u.is_staff = u.is_superuser = True;"
-                       "u.set_password('%s');"
-                       "u.save();" % pw)
-            python(user_py, show=False)
-            shadowed = "*" * len(pw)
-            print_command(user_py.replace("'%s'" % pw, "'%s'" % shadowed))
+    if "application" in env.servers:
+        upload_template_and_reload("settings")
+        with project():
+            if env.reqs_path:
+                pip("-r %s/%s" % (env.proj_path, env.reqs_path))
+            pip("gunicorn setproctitle south psycopg2 "
+                "django-compressor python-memcached")
+            manage("createdb --noinput --nodata")
+            python("from django.conf import settings;"
+                   "from django.contrib.sites.models import Site;"
+                   "site, _ = Site.objects.get_or_create(id=settings.SITE_ID);"
+                   "site.domain = '" + env.live_host + "';"
+                   "site.save();")
+            if env.admin_pass:
+                pw = env.admin_pass
+                user_py = ("from mezzanine.utils.models import get_user_model;"
+                           "User = get_user_model();"
+                           "u, _ = User.objects.get_or_create(username='admin');"
+                           "u.is_staff = u.is_superuser = True;"
+                           "u.set_password('%s');"
+                           "u.save();" % pw)
+                python(user_py, show=False)
+                shadowed = "*" * len(pw)
+                print_command(user_py.replace("'%s'" % pw, "'%s'" % shadowed))
 
     return True
 
@@ -435,14 +443,16 @@ def remove():
     """
     Blow away the current project.
     """
-    if exists(env.venv_path):
-        sudo("rm -rf %s" % env.venv_path)
-    for template in get_templates().values():
-        remote_path = template["remote_path"]
-        if exists(remote_path):
-            sudo("rm %s" % remote_path)
-    psql("DROP DATABASE %s;" % env.proj_name)
-    psql("DROP USER %s;" % env.proj_name)
+    if "application" in env.servers:
+        if exists(env.venv_path):
+            sudo("rm -rf %s" % env.venv_path)
+        for template in get_templates().values():
+            remote_path = template["remote_path"]
+            if exists(remote_path):
+                sudo("rm %s" % remote_path)
+    if "database" in env.servers:
+        psql("DROP DATABASE %s;" % env.proj_name)
+        psql("DROP USER %s;" % env.proj_name)
 
 
 ##############
@@ -455,13 +465,15 @@ def restart():
     """
     Restart gunicorn worker processes for the project.
     """
-    pid_path = "%s/gunicorn.pid" % env.proj_path
-    if exists(pid_path):
-        sudo("kill -HUP `cat %s`" % pid_path)
+    if "application" in env.servers:
+        pid_path = "%s/gunicorn.pid" % env.proj_path
+        if exists(pid_path):
+            sudo("kill -HUP `cat %s`" % pid_path)
+        else:
+            start_args = (env.proj_name, env.proj_name)
+            sudo("supervisorctl start %s:gunicorn_%s" % start_args)
     else:
-        start_args = (env.proj_name, env.proj_name)
-        sudo("supervisorctl start %s:gunicorn_%s" % start_args)
-
+        return False
 
 @task
 @log_call
@@ -473,32 +485,39 @@ def deploy():
     collect any new static assets, and restart gunicorn's work
     processes for the project.
     """
-    if not exists(env.venv_path):
-        prompt = raw_input("\nVirtualenv doesn't exist: %s\nWould you like "
-                           "to create it? (yes/no) " % env.proj_name)
-        if prompt.lower() != "yes":
-            print "\nAborting!"
-            return False
-        create()
-    for name in get_templates():
-        upload_template_and_reload(name)
-    with project():
-        backup("last.db")
-        static_dir = static()
-        if exists(static_dir):
-            run("tar -cf last.tar %s" % static_dir)
-        git = env.git
-        last_commit = "git rev-parse HEAD" if git else "hg id -i"
-        run("%s > last.commit" % last_commit)
-        with update_changed_requirements():
-            run("git pull origin master -f" if git else "hg pull && hg up -C")
-        run("git submodule init")
-        run("git submodule sync")
-        run("git submodule update")
-        manage("collectstatic -v 0 --noinput")
-        manage("syncdb --noinput")
-        manage("migrate --noinput")
-    restart()
+
+    if "application" in env.servers:
+        if not exists(env.venv_path):
+            prompt = raw_input("\nVirtualenv doesn't exist: %s\nWould you like "
+                               "to create it? (yes/no) " % env.proj_name)
+            if prompt.lower() != "yes":
+                print "\nAborting!"
+                return False
+            create()
+        for name in get_templates():
+            upload_template_and_reload(name)
+
+    if "database" in env.servers:
+        with cd(env.venv_path):
+            backup("last-%s.db" % env.proj_name)
+
+    if "application" in env.servers:
+        with project():
+            static_dir = static()
+            if exists(static_dir):
+                run("tar -cf last.tar %s" % static_dir)
+            git = env.git
+            last_commit = "git rev-parse HEAD" if git else "hg id -i"
+            run("%s > last.commit" % last_commit)
+            with update_changed_requirements():
+                run("git pull origin master -f" if git else "hg pull && hg up -C")
+            run("git submodule init")
+            run("git submodule sync")
+            run("git submodule update")
+            manage("collectstatic -v 0 --noinput")
+            manage("syncdb --noinput")
+            manage("migrate --noinput")
+        restart()
     return True
 
 
@@ -512,14 +531,20 @@ def rollback():
     and all static files. Calling rollback will revert all of these to
     their state prior to the last deploy.
     """
-    with project():
-        with update_changed_requirements():
-            update = "git checkout" if env.git else "hg up -C"
-            run("%s `cat last.commit`" % update)
-        with cd(join(static(), "..")):
-            run("tar -xf %s" % join(env.proj_path, "last.tar"))
-        restore("last.db")
-    restart()
+    if "application" in env.servers:
+        with project():
+            with update_changed_requirements():
+                update = "git checkout" if env.git else "hg up -C"
+                run("%s `cat last.commit`" % update)
+            with cd(join(static(), "..")):
+                run("tar -xf %s" % join(env.proj_path, "last.tar"))
+
+    if "database" in env.servers:
+        with cd(env.venv_path):
+            restore("last-%s.db" % env.proj_name)
+
+    if "application" in env.servers:
+        restart()
 
 
 @task

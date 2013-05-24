@@ -367,6 +367,9 @@ def create():
         run("virtualenv %s --distribute" % env.proj_name)
         vcs = "git" if env.git else "hg"
         run("%s clone %s %s" % (vcs, env.repo_url, env.proj_path))
+        with project():
+            run("git submodule init")
+            run("git submodule update")
 
     # Create DB and DB user.
     pw = db_pass()
@@ -489,6 +492,9 @@ def deploy():
         run("%s > last.commit" % last_commit)
         with update_changed_requirements():
             run("git pull origin master -f" if git else "hg pull && hg up -C")
+        run("git submodule init")
+        run("git submodule sync")
+        run("git submodule update")
         manage("collectstatic -v 0 --noinput")
         manage("syncdb --noinput")
         manage("migrate --noinput")

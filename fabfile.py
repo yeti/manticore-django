@@ -108,8 +108,8 @@ def project():
     """
     Runs commands within the project's directory.
     """
-    with cd(env.proj_dirname):
-        with virtualenv():
+    with virtualenv():
+        with cd(env.proj_dirname):
             yield
 
 

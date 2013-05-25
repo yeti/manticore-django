@@ -36,6 +36,7 @@ env.user = conf.get("SSH_USER", getuser())
 env.password = conf.get("SSH_PASS", None)
 env.key_filename = conf.get("SSH_KEY_PATH", None)
 env.hosts = conf.get("HOSTS", [])
+env.database_host = conf.get("DATABASE_HOST", "127.0.0.1")
 env.servers = conf.get("SERVERS", ['application','database'])
 
 env.proj_name = conf.get("PROJECT_NAME", os.getcwd().split(os.sep)[-1])
@@ -359,6 +360,16 @@ def create():
     live host.
     """
 
+    # create virtual environment directory and project path within
+    if not exists(env.venv_home):
+        prompt = raw_input("\nProject directory doesn't exist: %s\nWould you like "
+                           "to create it? (yes/no) " % env.venv_home)
+        if prompt.lower() != "yes":
+            print "\nAborting!"
+            return False
+
+        sudo("mkdir %s" % env.venv_home)
+
     if "application" in env.servers:
         # Create virtualenv
         with cd(env.venv_home):
@@ -377,6 +388,16 @@ def create():
                 run("git submodule update")
 
     if "database" in env.servers:
+        # create virtual environment directory and project path within
+        if not exists(env.venv_path):
+            prompt = raw_input("\nProject directory doesn't exist: %s\nWould you like "
+                               "to create it? (yes/no) " % env.venv_path)
+            if prompt.lower() != "yes":
+                print "\nAborting!"
+                return False
+
+            sudo("mkdir %s" % env.venv_path)
+
         # Create DB and DB user.
         pw = db_pass()
         user_sql_args = (env.proj_name, pw.replace("'", "\'"))

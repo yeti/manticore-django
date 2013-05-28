@@ -272,7 +272,7 @@ env.git = env.repo_url.startswith("git") or env.repo_url.endswith(".git")
 env.reqs_path = conf.get("REQUIREMENTS_PATH", None)
 env.gunicorn_port = conf.get("GUNICORN_PORT", 8000)
 env.locale = conf.get("LOCALE", "en_US.UTF-8")
-
+env.linux_distro = conf.get("LINUX_DISTRO", "squeeze")
 
 ##################
 # Template setup #
@@ -562,8 +562,21 @@ def installapp():
 @log_call
 @roles('database')
 def installdb():
-    apt("postgresql")
+    put(StringIO("deb http://apt.postgresql.org/pub/repos/apt/ %s-pgdg main" % env.linux_distro), "/etc/apt/sources.list.d/pgdg.list")
+    sudo("wget --quiet -O - http://apt.postgresql.org/pub/repos/apt/ACCC4CF8.asc | sudo apt-key add -")
+    sudo("apt-get update")
+    apt("postgresql-9.2")
 
+
+@task
+@roles("database")
+@log_call
+def uninstalldb():
+    """
+    Stop and uninstall the database.
+    """
+    sudo("/etc/init.d/postgresql stop")
+    sudo("apt-get remove postgresql")
 
 @task
 @log_call
@@ -651,8 +664,8 @@ def createapp2():
 
 @task
 @log_call
-@roles('database')
-def createdb():
+@roles("database")
+def createdb_config():
     # create virtual environment directory and project path within
     if not exists(env.venv_path):
         prompt = raw_input("\nProject directory doesn't exist: %s\nWould you like "
@@ -663,12 +676,16 @@ def createdb():
 
         sudo("mkdir %s" % env.venv_path)
 
-    # Configure database server to listen to appropriate ports. Tested with Debian 6 and Postgres 8.4
-    modify_config_file("/etc/postgresql/8.4/main/postgresql.conf",[("listen_addresses","'%s'" % ",".join(env.private_database_hosts))])
+    # Configure database server to listen to appropriate ports. Tested with Debian 6 and Postgres 9.2
+    modify_config_file("/etc/postgresql/9.2/main/postgresql.conf",[("port", "5432"), ("listen_addresses","'%s'" % ",".join(env.private_database_hosts))])
     client_list = [('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_application_hosts]
-    modify_config_file('/etc/postgresql/8.4/main/pg_hba.conf', client_list, type="records")
+    modify_config_file('/etc/postgresql/9.2/main/pg_hba.conf', client_list, type="records")
     restart()
 
+@task
+@log_call
+@roles("database")
+def createdb_database():
     # Create DB and DB user.
     pw = db_pass()
     user_sql_args = (env.proj_name, pw.replace("'", "\'"))
@@ -679,6 +696,29 @@ def createdb():
     psql("CREATE DATABASE %s WITH OWNER %s ENCODING = 'UTF8' "
          "LC_CTYPE = '%s' LC_COLLATE = '%s' TEMPLATE template0;" %
          (env.proj_name, env.proj_name, env.locale, env.locale))
+
+@task
+@log_call
+@roles('database')
+def createdb():
+    execute(createdb_config)
+    execute(createdb_database)
+
+@task
+@roles("database")
+@log_call
+def upgradedb():
+    """
+    Upgrade 8.4 to 9.2 Postgres database.
+    """
+    execute(installdb)
+    apt("postgresql-contrib-9.2")
+    sudo("/etc/init.d/postgresql stop")
+    run("su - postgres -c \"/usr/lib/postgresql/9.2/bin/pg_upgrade -u postgres -b %s -B %s -d %s -D %s -o '-D %s' -O '-D %s'\"" 
+        % ("/usr/lib/postgresql/8.4/bin/","/usr/lib/postgresql/9.2/bin/","/var/lib/postgresql/8.4/main/","/var/lib/postgresql/9.2/main/","/etc/postgresql/8.4/main/","/etc/postgresql/9.2/main/"))
+    sudo("apt-get remove postgresql-8.4")
+    sudo("/etc/init.d/postgresql start")
+    execute(createdb_config)
 
 @task
 @log_call
@@ -724,9 +764,9 @@ def removedb():
         psql("DROP DATABASE %s;" % env.proj_name)
         psql("DROP USER %s;" % env.proj_name)
 
-    # Configure database server to listen to appropriate ports. Tested with Debian 6 and Postgres 8.4
-    puts("TODO modify /etc/postgresql/8.4/main/pg_hba.conf")
-    puts("TODO modify /etc/postgresql/8.4/main/postgresql.conf")
+    # Configure database server to listen to appropriate ports. Tested with Debian 6 and Postgres 9.2
+    puts("TODO modify /etc/postgresql/9.2/main/pg_hba.conf")
+    puts("TODO modify /etc/postgresql/9.2/main/postgresql.conf")
 
 @task
 @log_call

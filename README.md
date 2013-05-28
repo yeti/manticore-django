@@ -28,6 +28,12 @@ Fabric configuration is set in your `settings.py` file:
              "REPO_URL": "", # Git or Mercurial remote repo URL for the project
              "DB_PASS": "", # Live database password
              "ADMIN_PASS": "", # Live admin user password
+             "LINUX_DISTRO": "squeeze", # Linux distribution such as Debian 6.0 (squeeze), 7.0 (wheezy), Ubuntu 10.04 (lucid), Ubuntu 12.04 (precise)
          }
 
 You are able to configure application and database hosts separately.
+
+Tested environments:
+* Debian 6 and Postgresql 9.2
+
+

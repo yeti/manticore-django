@@ -709,14 +709,17 @@ def createdb():
 @log_call
 def upgradedb():
     """
-    Upgrade 8.4 to 9.2 Postgres database.
+    Upgrade 8.4 to 9.2 Postgres database. Assumes a live running instance of Postgresql 8.4.
     """
+    execute(backupdb)
     execute(installdb)
     apt("postgresql-contrib-9.2")
     sudo("/etc/init.d/postgresql stop")
     run("su - postgres -c \"/usr/lib/postgresql/9.2/bin/pg_upgrade -u postgres -b %s -B %s -d %s -D %s -o '-D %s' -O '-D %s'\"" 
         % ("/usr/lib/postgresql/8.4/bin/","/usr/lib/postgresql/9.2/bin/","/var/lib/postgresql/8.4/main/","/var/lib/postgresql/9.2/main/","/etc/postgresql/8.4/main/","/etc/postgresql/9.2/main/"))
     sudo("apt-get remove postgresql-8.4")
+    sudo("rm /usr/lib/postgresql/8.4/bin/*") # remove old database version to prevent conflict in running postgresql commands
+    apt("postgresql-9.2")
     sudo("/etc/init.d/postgresql start")
     execute(createdb_config)
 
@@ -825,7 +828,7 @@ def deployapp1():
 @task
 @log_call
 @roles("database")
-def deploydb():
+def backupdb():
     with cd(env.venv_path):
         backup("last-%s.db" % env.proj_name)
 
@@ -863,7 +866,7 @@ def deploy():
     """
 
     execute(deployapp1)
-    execute(deploydb)
+    execute(backupdb)
     execute(deployapp2)
 
     return True

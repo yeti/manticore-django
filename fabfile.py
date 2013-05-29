@@ -617,7 +617,7 @@ def installdb():
     put(StringIO("deb http://apt.postgresql.org/pub/repos/apt/ %s-pgdg main" % env.linux_distro), "/etc/apt/sources.list.d/pgdg.list")
     sudo("wget --quiet -O - http://apt.postgresql.org/pub/repos/apt/ACCC4CF8.asc | sudo apt-key add -")
     sudo("apt-get update")
-    apt("postgresql-9.2")
+    apt("postgresql-9.2 postgresql-contrib-9.2")
 
 
 @task
@@ -773,7 +773,6 @@ def upgradedb():
     """
     backupdb()
     installdb()
-    apt("postgresql-contrib-9.2")
     sudo("/etc/init.d/postgresql stop")
     run("su - postgres -c \"/usr/lib/postgresql/9.2/bin/pg_upgrade -u postgres -b %s -B %s -d %s -D %s -o '-D %s' -O '-D %s'\"" 
         % ("/usr/lib/postgresql/8.4/bin/","/usr/lib/postgresql/9.2/bin/","/var/lib/postgresql/8.4/main/","/var/lib/postgresql/9.2/main/","/etc/postgresql/8.4/main/","/etc/postgresql/9.2/main/"))

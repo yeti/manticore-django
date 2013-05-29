@@ -43,14 +43,13 @@ env.user = conf.get("SSH_USER", getuser())
 env.password = conf.get("SSH_PASS", None)
 env.key_filename = conf.get("SSH_KEY_PATH", None)
 env.roledefs = {
-    'application' : conf.get("APPLICATION_HOSTS"),
-    'database' : conf.get("DATABASE_HOSTS"),
+    'application': conf.get("APPLICATION_HOSTS"),
+    'database': conf.get("DATABASE_HOSTS"),
+    'cron': conf.get("CRON_HOSTS") if conf.get("CRON_HOSTS") else conf.get("APPLICATION_HOSTS"),
 }
 env.private_database_hosts = conf.get("PRIVATE_DATABASE_HOSTS", ["127.0.0.1"])
 env.primary_database_host = env.private_database_hosts[0] # the first listed private database host is the master, used by live_settings.py
 env.private_application_hosts = conf.get("PRIVATE_APPLICATION_HOSTS", ["127.0.0.1"])
-env.hosts.extend(conf.get("APPLICATION_HOSTS"))
-env.hosts.extend(conf.get("DATABASE_HOSTS"))
 env.allowed_hosts = ",".join(["'%s'" % host for host in conf.get("APPLICATION_HOSTS")]) # used by live_settings.py to set Django's allowed hosts
 
 env.proj_name = conf.get("PROJECT_NAME", os.getcwd().split(os.sep)[-1])
@@ -60,7 +59,7 @@ env.proj_dirname = "project"
 env.proj_path = "%s/%s" % (env.venv_path, env.proj_dirname)
 env.manage = "%s/bin/python %s/project/manage.py" % (env.venv_path,
                                                      env.venv_path)
-env.live_host = conf.get("LIVE_HOSTNAME", env.hosts[0] if env.hosts else None)
+env.live_host = conf.get("LIVE_HOSTNAME", conf.get("APPLICATION_HOSTS")[0] if conf.get("APPLICATION_HOSTS") else None)
 env.repo_url = conf.get("REPO_URL", "")
 env.git = env.repo_url.startswith("git") or env.repo_url.endswith(".git")
 env.reqs_path = conf.get("REQUIREMENTS_PATH", None)
@@ -76,6 +75,8 @@ env.linux_distro = conf.get("LINUX_DISTRO", "squeeze")
 # Each template gets uploaded at deploy time, only if their
 # contents has changed, in which case, the reload command is
 # also run.
+#
+# If a role entry is specified, the template is uploaded only for the given role: application, cron
 
 templates = {
     "nginx": {
@@ -93,6 +94,7 @@ templates = {
         "remote_path": "/etc/cron.d/%(proj_name)s",
         "owner": "root",
         "mode": "600",
+        "role": "cron",
     },
     "gunicorn": {
         "local_path": "deploy/gunicorn.conf.py",
@@ -556,7 +558,19 @@ def manage(command):
 
 @task
 @log_call
-@roles('application')
+@roles('application','cron','database')
+def install_prereq():
+    locale = "LC_ALL=%s" % env.locale
+    with hide("stdout"):
+        if locale not in sudo("cat /etc/default/locale"):
+            sudo("update-locale %s" % locale)
+            run("exit")
+    sudo("apt-get update -y -q")
+    apt("git-core supervisor")
+
+@task
+@log_call
+@roles('application','cron')
 def installapp():
     apt("nginx libjpeg-dev python-dev python-setuptools "
         "libpq-dev memcached libffi-dev")
@@ -589,19 +603,27 @@ def install():
     """
     Installs the base system and Python requirements for the entire server.
     """
-    locale = "LC_ALL=%s" % env.locale
-    with hide("stdout"):
-        if locale not in sudo("cat /etc/default/locale"):
-            sudo("update-locale %s" % locale)
-            run("exit")
-    sudo("apt-get update -y -q")
-    apt("git-core supervisor")
+    execute(install_prereq)
     execute(installapp)
     execute(installdb)
 
-@task
 @log_call
-@roles('application')
+@roles('application','cron','database')
+def create_prereq():
+    """
+    Create virtual environment directory and project path within
+    """
+    if not exists(env.venv_home):
+        prompt = raw_input("\nProject directory doesn't exist: %s\nWould you like "
+                           "to create it? (yes/no) " % env.venv_home)
+        if prompt.lower() != "yes":
+            print "\nAborting!"
+            return False
+
+        sudo("mkdir %s" % env.venv_home)
+
+@log_call
+@roles('application','cron')
 def createapp1():
     # Create virtualenv
     with cd(env.venv_home):
@@ -611,7 +633,7 @@ def createapp1():
             if prompt.lower() != "yes":
                 print "\nAborting!"
                 return False
-            remove()
+            removeapp()
         run("virtualenv %s --distribute" % env.proj_name)
         vcs = "git" if env.git else "hg"
         run("%s clone %s %s" % (vcs, env.repo_url, env.proj_path))
@@ -619,9 +641,8 @@ def createapp1():
             run("git submodule init")
             run("git submodule update")
 
-@task
 @log_call
-@roles('application')
+@roles('application','cron')
 def createapp2():
     # Set up SSL certificate.
     conf_path = "/etc/nginx/conf"
@@ -667,7 +688,6 @@ def createapp2():
             shadowed = "*" * len(pw)
             print_command(user_py.replace("'%s'" % pw, "'%s'" % shadowed))
 
-@task
 @log_call
 @roles("database")
 def createdb_config():
@@ -685,9 +705,8 @@ def createdb_config():
     modify_config_file("/etc/postgresql/9.2/main/postgresql.conf",[("port", "5432"), ("listen_addresses","'%s'" % ",".join(env.private_database_hosts))])
     client_list = [('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_application_hosts]
     modify_config_file('/etc/postgresql/9.2/main/pg_hba.conf', client_list, type="records")
-    restart()
+    restartdb()
 
-@task
 @log_call
 @roles("database")
 def createdb_database():
@@ -703,11 +722,11 @@ def createdb_database():
          (env.proj_name, env.proj_name, env.locale, env.locale))
 
 @task
+@roles("database")
 @log_call
-@roles('database')
 def createdb():
-    execute(createdb_config)
-    execute(createdb_database)
+    createdb_config()
+    createdb_database()
 
 @task
 @roles("database")
@@ -716,8 +735,8 @@ def upgradedb():
     """
     Upgrade 8.4 to 9.2 Postgres database. Assumes a live running instance of Postgresql 8.4.
     """
-    execute(backupdb)
-    execute(installdb)
+    backupdb()
+    installdb()
     apt("postgresql-contrib-9.2")
     sudo("/etc/init.d/postgresql stop")
     run("su - postgres -c \"/usr/lib/postgresql/9.2/bin/pg_upgrade -u postgres -b %s -B %s -d %s -D %s -o '-D %s' -O '-D %s'\"" 
@@ -726,7 +745,7 @@ def upgradedb():
     sudo("rm /usr/lib/postgresql/8.4/bin/*") # remove old database version to prevent conflict in running postgresql commands
     apt("postgresql-9.2")
     sudo("/etc/init.d/postgresql start")
-    execute(createdb_config)
+    createdb_config()
 
 @task
 @log_call
@@ -738,24 +757,15 @@ def create():
     live host.
     """
 
-    # create virtual environment directory and project path within
-    if not exists(env.venv_home):
-        prompt = raw_input("\nProject directory doesn't exist: %s\nWould you like "
-                           "to create it? (yes/no) " % env.venv_home)
-        if prompt.lower() != "yes":
-            print "\nAborting!"
-            return False
-
-        sudo("mkdir %s" % env.venv_home)
-
+    execute(create_prereq)
     execute(createapp1)
     execute(createdb)
     execute(createapp2)
 
     return True
 
-
-@roles("application")
+@task
+@roles("application",'cron')
 @log_call
 def removeapp():
     if exists(env.venv_path):
@@ -765,6 +775,7 @@ def removeapp():
         if exists(remote_path):
             sudo("rm %s" % remote_path)
 
+@task
 @roles("database")
 @log_call
 def removedb():
@@ -773,8 +784,8 @@ def removedb():
         psql("DROP USER %s;" % env.proj_name)
 
     # Configure database server to listen to appropriate ports. Tested with Debian 6 and Postgres 9.2
-    puts("TODO modify /etc/postgresql/9.2/main/pg_hba.conf")
-    puts("TODO modify /etc/postgresql/9.2/main/postgresql.conf")
+    warn("TODO modify /etc/postgresql/9.2/main/pg_hba.conf")
+    warn("TODO modify /etc/postgresql/9.2/main/postgresql.conf")
 
 @task
 @log_call
@@ -791,7 +802,7 @@ def remove():
 
 @task
 @log_call
-@roles("application")
+@roles("application",'cron')
 def restartapp():
     pid_path = "%s/gunicorn.pid" % env.proj_path
     if exists(pid_path):
@@ -806,7 +817,6 @@ def restartapp():
 def restartdb():
     sudo("/etc/init.d/postgresql restart") # command specific to Debian
 
-
 @task
 @log_call
 def restart():
@@ -816,10 +826,8 @@ def restart():
     execute(restartapp)
     execute(restartdb)
 
-@task
-@log_call
-@roles("application")
-def deployapp1():
+def createdirs():
+    # Helper method for deployapp1_application_templates and deployapp1_cron_templates
     if not exists(env.venv_path):
         prompt = raw_input("\nVirtualenv doesn't exist: %s\nWould you like "
                            "to create it? (yes/no) " % env.proj_name)
@@ -827,8 +835,24 @@ def deployapp1():
             print "\nAborting!"
             return False
         create()
+
+@log_call
+@roles("application")
+def deployapp1_application_templates():
+    createdirs()
     for name in get_templates():
-        upload_template_and_reload(name)
+        template = get_templates()[name]
+        if not "role" in template or template["role"] == "application":
+            upload_template_and_reload(name)
+
+@log_call
+@roles("cron")
+def deployapp1_cron_templates():
+    createdirs()
+    for name in get_templates():
+        template = get_templates()[name]
+        if not "role" in template or template["role"] == "cron":
+            upload_template_and_reload(name)
 
 @task
 @log_call
@@ -837,10 +861,9 @@ def backupdb():
     with cd(env.venv_path):
         backup("last-%s.db" % env.proj_name)
 
-
 @task
 @log_call
-@roles("application")
+@roles("application",'cron')
 def deployapp2():
     with project():
         static_dir = static()
@@ -857,7 +880,7 @@ def deployapp2():
         manage("collectstatic -v 0 --noinput")
         manage("syncdb --noinput")
         manage("migrate --noinput")
-    restart()    
+    restartapp()
 
 @task
 @log_call
@@ -870,7 +893,8 @@ def deploy():
     processes for the project.
     """
 
-    execute(deployapp1)
+    execute(deployapp1_application_templates)
+    execute(deployapp1_cron_templates)
     execute(backupdb)
     execute(deployapp2)
 
@@ -879,7 +903,7 @@ def deploy():
 
 @task
 @log_call
-@roles("application")
+@roles("application",'cron')
 def rolebackapp():
     with project():
         with update_changed_requirements():
@@ -888,7 +912,7 @@ def rolebackapp():
         with cd(join(static(), "..")):
             run("tar -xf %s" % join(env.proj_path, "last.tar"))
     
-    restart()
+    restartapp()
 
 @task
 @log_call

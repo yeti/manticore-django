@@ -50,7 +50,12 @@ env.roledefs = {
 env.private_database_hosts = conf.get("PRIVATE_DATABASE_HOSTS", ["127.0.0.1"])
 env.primary_database_host = env.private_database_hosts[0] # the first listed private database host is the master, used by live_settings.py
 env.private_application_hosts = conf.get("PRIVATE_APPLICATION_HOSTS", ["127.0.0.1"])
-env.allowed_hosts = ",".join(["'%s'" % host for host in conf.get("APPLICATION_HOSTS")]) # used by live_settings.py to set Django's allowed hosts
+if conf.get("LIVE_HOSTNAME"):
+    tmp_hosts = conf.get("APPLICATION_HOSTS")
+    tmp_hosts.append(conf.get("LIVE_HOSTNAME"))
+    env.allowed_hosts = ",".join(["'%s'" % host for host in tmp_hosts]) # used by live_settings.py to set Django's allowed hosts
+else:
+    env.allowed_hosts = ",".join(["'%s'" % host for host in conf.get("APPLICATION_HOSTS")]) # used by live_settings.py to set Django's allowed hosts
 
 env.proj_name = conf.get("PROJECT_NAME", os.getcwd().split(os.sep)[-1])
 env.venv_home = conf.get("VIRTUALENV_HOME", "/home/%s" % env.user)

@@ -5,11 +5,15 @@ Utility functionality for a Manticore Django project
 
 Deployment script
 -----------------
-Manticore-django comes with a `fabric` deployment script. The script is based on Mezzanine's deployment script with additional features. These features allow the script to deploy an *application* and *database* server using different `settings.py`.
+Manticore-django comes with a `fabric` deployment script. The script is based on Mezzanine's deployment script with additional features.
+These features allow the script to deploy an *application* and *database* server using different `settings.py`.
 
 ### Fabric Configuration
 
-Fabric configuration is set in your `settings.py` file:
+This Fabric deploy script in Manticore-Django is a drop-in replacement for Mezzanine's fabric deployment.
+In addition to Mezzanine's script, you are able to configure application, cron, and database hosts separately.
+
+In your `settings.py` file:
 
         FABRIC = 
              "SSH_USER": "", # SSH username
@@ -33,9 +37,36 @@ Fabric configuration is set in your `settings.py` file:
              "LINUX_DISTRO": "squeeze", # Linux distribution such as Debian 6.0 (squeeze), 7.0 (wheezy), Ubuntu 10.04 (lucid), Ubuntu 12.04 (precise)
          }
 
-You are able to configure application and database hosts separately.
+### deploy/live_settings.py
 
-Tested environments:
+Add/replace the following lines to Mezzanine's `deploy/live_settings.py`:
+
+        DATABASES = {
+            "default": {
+                # Ends with "postgresql_psycopg2", "mysql", "sqlite3" or "oracle".
+                "ENGINE": "django.db.backends.postgresql_psycopg2",
+                # DB name or path to database file if using sqlite3.
+                "NAME": "%(proj_name)s",
+                # Not used with sqlite3.
+                "USER": "%(proj_name)s",
+                # Not used with sqlite3.
+                "PASSWORD": "%(db_pass)s",
+                # Set to empty string for localhost. Not used with sqlite3.
+                "HOST": "%(primary_database_host)s",
+                # Set to empty string for default. Not used with sqlite3.
+                "PORT": "",
+            }
+        }
+
+        ALLOWED_HOSTS = [%(allowed_hosts)s]
+
+        # ...
+
+
+
+### Tested Environments
+
+I tested the script with the following configurations:
+
 * Debian 6 and Postgresql 9.2
-
-
+* Debian 6 and Postgresql 8.4 (deprecated)

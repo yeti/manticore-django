@@ -17,6 +17,94 @@ from fabric.contrib.files import exists, upload_template, _escape_for_regex
 from fabric.colors import yellow, green, blue, red
 from fabric.utils import *
 
+
+################
+# Config setup #
+################
+
+conf = {}
+if sys.argv[0].split(os.sep)[-1] in ("fab",             # POSIX
+                                     "fab-script.py"):  # Windows
+    # Ensure we import settings from the current dir
+    try:
+        conf = __import__("settings", globals(), locals(), [], 0).FABRIC
+        try:
+            conf["APPLICATION_HOSTS"][0]
+            conf["DATABASE_HOSTS"][0]
+        except (KeyError, ValueError):
+            raise ImportError
+    except (ImportError, AttributeError):
+        print "Aborting, no hosts defined."
+        exit()
+
+env.db_pass = conf.get("DB_PASS", None)
+env.admin_pass = conf.get("ADMIN_PASS", None)
+env.user = conf.get("SSH_USER", getuser())
+env.password = conf.get("SSH_PASS", None)
+env.key_filename = conf.get("SSH_KEY_PATH", None)
+env.roledefs = {
+    'application' : conf.get("APPLICATION_HOSTS"),
+    'database' : conf.get("DATABASE_HOSTS"),
+}
+env.private_database_hosts = conf.get("PRIVATE_DATABASE_HOSTS", ["127.0.0.1"])
+env.primary_database_host = env.private_database_hosts[0] # the first listed private database host is the master, used by live_settings.py
+env.private_application_hosts = conf.get("PRIVATE_APPLICATION_HOSTS", ["127.0.0.1"])
+env.hosts.extend(conf.get("APPLICATION_HOSTS"))
+env.hosts.extend(conf.get("DATABASE_HOSTS"))
+env.allowed_hosts = ",".join(["'%s'" % host for host in conf.get("APPLICATION_HOSTS")]) # used by live_settings.py to set Django's allowed hosts
+
+env.proj_name = conf.get("PROJECT_NAME", os.getcwd().split(os.sep)[-1])
+env.venv_home = conf.get("VIRTUALENV_HOME", "/home/%s" % env.user)
+env.venv_path = "%s/%s" % (env.venv_home, env.proj_name)
+env.proj_dirname = "project"
+env.proj_path = "%s/%s" % (env.venv_path, env.proj_dirname)
+env.manage = "%s/bin/python %s/project/manage.py" % (env.venv_path,
+                                                     env.venv_path)
+env.live_host = conf.get("LIVE_HOSTNAME", env.hosts[0] if env.hosts else None)
+env.repo_url = conf.get("REPO_URL", "")
+env.git = env.repo_url.startswith("git") or env.repo_url.endswith(".git")
+env.reqs_path = conf.get("REQUIREMENTS_PATH", None)
+env.gunicorn_port = conf.get("GUNICORN_PORT", 8000)
+env.locale = conf.get("LOCALE", "en_US.UTF-8")
+env.linux_distro = conf.get("LINUX_DISTRO", "squeeze")
+
+
+##################
+# Template setup #
+##################
+
+# Each template gets uploaded at deploy time, only if their
+# contents has changed, in which case, the reload command is
+# also run.
+
+templates = {
+    "nginx": {
+        "local_path": "deploy/nginx.conf",
+        "remote_path": "/etc/nginx/sites-enabled/%(proj_name)s.conf",
+        "reload_command": "service nginx restart",
+    },
+    "supervisor": {
+        "local_path": "deploy/supervisor.conf",
+        "remote_path": "/etc/supervisor/conf.d/%(proj_name)s.conf",
+        "reload_command": "supervisorctl reload",
+    },
+    "cron": {
+        "local_path": "deploy/crontab",
+        "remote_path": "/etc/cron.d/%(proj_name)s",
+        "owner": "root",
+        "mode": "600",
+    },
+    "gunicorn": {
+        "local_path": "deploy/gunicorn.conf.py",
+        "remote_path": "%(proj_path)s/gunicorn.conf.py",
+    },
+    "settings": {
+        "local_path": "deploy/live_settings.py",
+        "remote_path": "%(proj_path)s/local_settings.py",
+    },
+}
+
+
 ####################
 #  Utility Methods #
 ####################
@@ -80,6 +168,8 @@ def modify_config_file(remote_path, settings=None, comment_char='#', setter_char
 
     By default, the file will be copied to ``remote_path`` as the logged-in
     user; specify ``use_sudo=True`` to use `sudo` instead.
+
+    Downloaded from https://github.com/fabric/fabric/pull/658
 
     """
     changes_done = set()
@@ -223,91 +313,6 @@ def modify_config_file(remote_path, settings=None, comment_char='#', setter_char
                 #mirror_local_mode=mirror_local_mode,
                 #mode=mode
             )
-
-################
-# Config setup #
-################
-
-conf = {}
-if sys.argv[0].split(os.sep)[-1] in ("fab",             # POSIX
-                                     "fab-script.py"):  # Windows
-    # Ensure we import settings from the current dir
-    try:
-        conf = __import__("settings", globals(), locals(), [], 0).FABRIC
-        try:
-            conf["APPLICATION_HOSTS"][0]
-            conf["DATABASE_HOSTS"][0]
-        except (KeyError, ValueError):
-            raise ImportError
-    except (ImportError, AttributeError):
-        print "Aborting, no hosts defined."
-        exit()
-
-env.db_pass = conf.get("DB_PASS", None)
-env.admin_pass = conf.get("ADMIN_PASS", None)
-env.user = conf.get("SSH_USER", getuser())
-env.password = conf.get("SSH_PASS", None)
-env.key_filename = conf.get("SSH_KEY_PATH", None)
-env.roledefs = {
-    'application' : conf.get("APPLICATION_HOSTS"),
-    'database' : conf.get("DATABASE_HOSTS"),
-}
-env.private_database_hosts = conf.get("PRIVATE_DATABASE_HOSTS", ["127.0.0.1"])
-env.primary_database_host = env.private_database_hosts[0] # the first listed private database host is the master, used by live_settings.py
-env.private_application_hosts = conf.get("PRIVATE_APPLICATION_HOSTS", ["127.0.0.1"])
-env.hosts.extend(conf.get("APPLICATION_HOSTS"))
-env.hosts.extend(conf.get("DATABASE_HOSTS"))
-env.allowed_hosts = ",".join(["'%s'" % host for host in conf.get("APPLICATION_HOSTS")]) # used by live_settings.py to set Django's allowed hosts
-
-env.proj_name = conf.get("PROJECT_NAME", os.getcwd().split(os.sep)[-1])
-env.venv_home = conf.get("VIRTUALENV_HOME", "/home/%s" % env.user)
-env.venv_path = "%s/%s" % (env.venv_home, env.proj_name)
-env.proj_dirname = "project"
-env.proj_path = "%s/%s" % (env.venv_path, env.proj_dirname)
-env.manage = "%s/bin/python %s/project/manage.py" % (env.venv_path,
-                                                     env.venv_path)
-env.live_host = conf.get("LIVE_HOSTNAME", env.hosts[0] if env.hosts else None)
-env.repo_url = conf.get("REPO_URL", "")
-env.git = env.repo_url.startswith("git") or env.repo_url.endswith(".git")
-env.reqs_path = conf.get("REQUIREMENTS_PATH", None)
-env.gunicorn_port = conf.get("GUNICORN_PORT", 8000)
-env.locale = conf.get("LOCALE", "en_US.UTF-8")
-env.linux_distro = conf.get("LINUX_DISTRO", "squeeze")
-
-##################
-# Template setup #
-##################
-
-# Each template gets uploaded at deploy time, only if their
-# contents has changed, in which case, the reload command is
-# also run.
-
-templates = {
-    "nginx": {
-        "local_path": "deploy/nginx.conf",
-        "remote_path": "/etc/nginx/sites-enabled/%(proj_name)s.conf",
-        "reload_command": "service nginx restart",
-    },
-    "supervisor": {
-        "local_path": "deploy/supervisor.conf",
-        "remote_path": "/etc/supervisor/conf.d/%(proj_name)s.conf",
-        "reload_command": "supervisorctl reload",
-    },
-    "cron": {
-        "local_path": "deploy/crontab",
-        "remote_path": "/etc/cron.d/%(proj_name)s",
-        "owner": "root",
-        "mode": "600",
-    },
-    "gunicorn": {
-        "local_path": "deploy/gunicorn.conf.py",
-        "remote_path": "%(proj_path)s/gunicorn.conf.py",
-    },
-    "settings": {
-        "local_path": "deploy/live_settings.py",
-        "remote_path": "%(proj_path)s/local_settings.py",
-    },
-}
 
 
 ######################################

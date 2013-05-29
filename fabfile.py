@@ -13,7 +13,7 @@ import traceback
 
 from fabric.context_managers import settings
 from fabric.api import env, cd, prefix, sudo as _sudo, run as _run, hide, task, get, puts, put, roles, execute
-from fabric.contrib.files import exists, upload_template, _escape_for_regex
+from fabric.contrib.files import exists, upload_template, _escape_for_regex, append
 from fabric.colors import yellow, green, blue, red
 from fabric.utils import *
 
@@ -73,6 +73,8 @@ env.gunicorn_port = conf.get("GUNICORN_PORT", 8000)
 env.locale = conf.get("LOCALE", "en_US.UTF-8")
 env.linux_distro = conf.get("LINUX_DISTRO", "squeeze")
 
+env.deploy_my_public_key = conf.get("DEPLOY_MY_PUBLIC_KEY")
+env.deploy_ssh_key_path = conf.get("DEPLOY_SSH_KEY_PATH")
 
 ##################
 # Template setup #
@@ -562,6 +564,32 @@ def manage(command):
     """
     return run("%s %s" % (env.manage, command))
 
+#########################
+# SSH key setup         #
+#########################
+
+@roles('application','cron','database')
+def copymysshkey():
+    if env.deploy_my_public_key and len(env.deploy_my_public_key) > 0:
+        with open(os.path.expanduser(env.deploy_my_public_key)) as f:
+            append("~/.ssh/authorized_keys", f.readline().rstrip('\n'))
+
+@roles('application','cron')
+def copydeploykey():
+    # we do not copy the deployment ssh key (which accesses your repo) onto the database server
+    if env.deploy_ssh_key_path and len(env.deploy_ssh_key_path) > 0:
+        put(env.deploy_ssh_key_path, "~/.ssh/%s" % os.path.basename(env.deploy_ssh_key_path))
+        append("~/.ssh/config", StringIO("IdentityFile ~/.ssh/%s" % os.path.basename(env.deploy_ssh_key_path)))
+
+@task
+@log_call
+def copysshkeys():
+    """
+    Copies your local SSH public key onto the server for remote access (run once only, does not check for duplicates).
+    Also, installs DEPLOY_SSH_KEY_PATH to the application/cron server.
+    """
+    execute(copymysshkey)
+    execute(copydeploykey)
 
 #########################
 # Install and configure #

@@ -26,6 +26,7 @@ Fabric configuration is set in your `settings.py` file:
              "GUNICORN_PORT": 8000, # Port gunicorn will listen on
              "LOCALE": "en_US.UTF-8", # Should end with ".UTF-8"
              "LIVE_HOSTNAME": "www.example.com", # Host for public site.
+             "SITENAME": "Default", # Registered sitename in Django for the live hostname.
              "REPO_URL": "", # Git or Mercurial remote repo URL for the project
              "DB_PASS": "", # Live database password
              "ADMIN_PASS": "", # Live admin user password

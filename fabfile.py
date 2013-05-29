@@ -45,7 +45,7 @@ env.key_filename = conf.get("SSH_KEY_PATH", None)
 env.roledefs = {
     'application': conf.get("APPLICATION_HOSTS"),
     'database': conf.get("DATABASE_HOSTS"),
-    'cron': conf.get("CRON_HOSTS") if conf.get("CRON_HOSTS") else conf.get("APPLICATION_HOSTS"),
+    'cron': conf.get("CRON_HOSTS", conf.get("APPLICATION_HOSTS")),
 }
 env.private_database_hosts = conf.get("PRIVATE_DATABASE_HOSTS", ["127.0.0.1"])
 env.primary_database_host = env.private_database_hosts[0] # the first listed private database host is the master, used by live_settings.py
@@ -60,6 +60,7 @@ env.proj_path = "%s/%s" % (env.venv_path, env.proj_dirname)
 env.manage = "%s/bin/python %s/project/manage.py" % (env.venv_path,
                                                      env.venv_path)
 env.live_host = conf.get("LIVE_HOSTNAME", conf.get("APPLICATION_HOSTS")[0] if conf.get("APPLICATION_HOSTS") else None)
+env.sitename = conf.get("SITENAME", "Default")
 env.repo_url = conf.get("REPO_URL", "")
 env.git = env.repo_url.startswith("git") or env.repo_url.endswith(".git")
 env.reqs_path = conf.get("REQUIREMENTS_PATH", None)
@@ -638,8 +639,12 @@ def createapp1():
             run("git submodule init")
             run("git submodule update")
 
+@task
 @roles('application','cron')
 def createapp2():
+    """
+    Continuation of create. Used if the database already exists.
+    """
     # Set up SSL certificate.
     conf_path = "/etc/nginx/conf"
     if not exists(conf_path):
@@ -671,6 +676,7 @@ def createapp2():
                "from django.contrib.sites.models import Site;"
                "site, _ = Site.objects.get_or_create(id=settings.SITE_ID);"
                "site.domain = '" + env.live_host + "';"
+               "site.name = '" + env.sitename.replace("'", "") + "';"
                "site.save();")
         if env.admin_pass:
             pw = env.admin_pass

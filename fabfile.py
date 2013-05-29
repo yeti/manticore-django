@@ -15,7 +15,7 @@ from fabric.context_managers import settings
 from fabric.api import env, cd, prefix, sudo as _sudo, run as _run, hide, task, get, puts, put, roles, execute
 from fabric.contrib.files import exists, upload_template, _escape_for_regex
 from fabric.colors import yellow, green, blue, red
-
+from fabric.utils import *
 
 ####################
 #  Utility Methods #
@@ -573,7 +573,7 @@ def installdb():
 @log_call
 def uninstalldb():
     """
-    Stop and uninstall the database.
+    Stop and uninstall the database. Data directory is untouched.
     """
     sudo("/etc/init.d/postgresql stop")
     sudo("apt-get remove postgresql")

@@ -578,7 +578,7 @@ def copymysshkey():
 def copydeploykey():
     # we do not copy the deployment ssh key (which accesses your repo) onto the database server
     if env.deploy_ssh_key_path and len(env.deploy_ssh_key_path) > 0:
-        put(env.deploy_ssh_key_path, "~/.ssh/%s" % os.path.basename(env.deploy_ssh_key_path))
+        put(env.deploy_ssh_key_path, "~/.ssh/%s" % os.path.basename(env.deploy_ssh_key_path),mode=0600)
         append("~/.ssh/config", StringIO("IdentityFile ~/.ssh/%s" % os.path.basename(env.deploy_ssh_key_path)))
 
 @task

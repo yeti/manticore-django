@@ -387,6 +387,7 @@ def print_command(command):
 
 
 @task
+@roles('application','cron','database')
 def run(command, show=True):
     """
     Runs a shell comand on the remote server.
@@ -398,6 +399,7 @@ def run(command, show=True):
 
 
 @task
+@roles('application','cron','database')
 def sudo(command, show=True):
     """
     Runs a command as sudo.
@@ -471,6 +473,7 @@ def db_pass():
 
 
 @task
+@roles('application','cron','database')
 def apt(packages):
     """
     Installs one or more system packages via apt.
@@ -479,6 +482,7 @@ def apt(packages):
 
 
 @task
+@roles('application','cron')
 def pip(packages):
     """
     Installs one or more Python packages within the virtual environment.
@@ -496,6 +500,7 @@ def postgres(command):
 
 
 @task
+@roles('database')
 def psql(sql, show=True):
     """
     Runs SQL against the project's database.
@@ -506,7 +511,6 @@ def psql(sql, show=True):
     return out
 
 
-@task
 def backup(filename):
     """
     Backs up the database.
@@ -514,7 +518,6 @@ def backup(filename):
     return postgres("pg_dump -Fc %s > %s" % (env.proj_name, filename))
 
 
-@task
 def restore(filename):
     """
     Restores the database.
@@ -523,6 +526,7 @@ def restore(filename):
 
 
 @task
+@roles('application','cron')
 def python(code, show=True):
     """
     Runs Python code in the project's virtual environment, with Django loaded.
@@ -545,6 +549,7 @@ def static():
 
 
 @task
+@roles('application','cron')
 def manage(command):
     """
     Runs a Django management command.
@@ -556,8 +561,6 @@ def manage(command):
 # Install and configure #
 #########################
 
-@task
-@log_call
 @roles('application','cron','database')
 def install_prereq():
     locale = "LC_ALL=%s" % env.locale
@@ -568,8 +571,6 @@ def install_prereq():
     sudo("apt-get update -y -q")
     apt("git-core supervisor")
 
-@task
-@log_call
 @roles('application','cron')
 def installapp():
     apt("nginx libjpeg-dev python-dev python-setuptools "
@@ -577,8 +578,6 @@ def installapp():
     sudo("easy_install pip")
     sudo("pip install virtualenv mercurial")
 
-@task
-@log_call
 @roles('database')
 def installdb():
     put(StringIO("deb http://apt.postgresql.org/pub/repos/apt/ %s-pgdg main" % env.linux_distro), "/etc/apt/sources.list.d/pgdg.list")
@@ -607,7 +606,6 @@ def install():
     execute(installapp)
     execute(installdb)
 
-@log_call
 @roles('application','cron','database')
 def create_prereq():
     """
@@ -622,7 +620,6 @@ def create_prereq():
 
         sudo("mkdir %s" % env.venv_home)
 
-@log_call
 @roles('application','cron')
 def createapp1():
     # Create virtualenv
@@ -641,7 +638,6 @@ def createapp1():
             run("git submodule init")
             run("git submodule update")
 
-@log_call
 @roles('application','cron')
 def createapp2():
     # Set up SSL certificate.
@@ -688,7 +684,6 @@ def createapp2():
             shadowed = "*" * len(pw)
             print_command(user_py.replace("'%s'" % pw, "'%s'" % shadowed))
 
-@log_call
 @roles("database")
 def createdb_config():
     # create virtual environment directory and project path within
@@ -707,7 +702,6 @@ def createdb_config():
     modify_config_file('/etc/postgresql/9.2/main/pg_hba.conf', client_list, type="records")
     restartdb()
 
-@log_call
 @roles("database")
 def createdb_database():
     # Create DB and DB user.
@@ -725,6 +719,9 @@ def createdb_database():
 @roles("database")
 @log_call
 def createdb():
+    """
+    Sets up the database configuration, and then creates the database and superuser account.
+    """
     createdb_config()
     createdb_database()
 
@@ -751,10 +748,7 @@ def upgradedb():
 @log_call
 def create():
     """
-    Create a new virtual environment for a project.
-    Pulls the project's repo from version control, adds system-level
-    configs for the project, and initialises the database with the
-    live host.
+    Create a new virtual environment for a project. Pulls the project's repo from version control, adds system-level configs for the project, and initialises the database with the live host.
     """
 
     execute(create_prereq)
@@ -768,6 +762,9 @@ def create():
 @roles("application",'cron')
 @log_call
 def removeapp():
+    """
+    Removes all traces of the application from the application server.
+    """
     if exists(env.venv_path):
         sudo("rm -rf %s" % env.venv_path)
     for template in get_templates().values():
@@ -779,6 +776,9 @@ def removeapp():
 @roles("database")
 @log_call
 def removedb():
+    """
+    Removes all data from the database. USE WITH CAUTION.
+    """
     with settings(warn_only=True):    
         psql("DROP DATABASE %s;" % env.proj_name)
         psql("DROP USER %s;" % env.proj_name)
@@ -804,6 +804,9 @@ def remove():
 @log_call
 @roles("application",'cron')
 def restartapp():
+    """
+    Restarts the gunicorn process.
+    """
     pid_path = "%s/gunicorn.pid" % env.proj_path
     if exists(pid_path):
         sudo("kill -HUP `cat %s`" % pid_path)
@@ -815,6 +818,9 @@ def restartapp():
 @log_call
 @roles("database")
 def restartdb():
+    """
+    Restarts postgres.
+    """
     sudo("/etc/init.d/postgresql restart") # command specific to Debian
 
 @task
@@ -836,7 +842,6 @@ def createdirs():
             return False
         create()
 
-@log_call
 @roles("application")
 def deployapp1_application_templates():
     createdirs()
@@ -845,7 +850,6 @@ def deployapp1_application_templates():
         if not "role" in template or template["role"] == "application":
             upload_template_and_reload(name)
 
-@log_call
 @roles("cron")
 def deployapp1_cron_templates():
     createdirs()
@@ -854,15 +858,6 @@ def deployapp1_cron_templates():
         if not "role" in template or template["role"] == "cron":
             upload_template_and_reload(name)
 
-@task
-@log_call
-@roles("database")
-def backupdb():
-    with cd(env.venv_path):
-        backup("last-%s.db" % env.proj_name)
-
-@task
-@log_call
 @roles("application",'cron')
 def deployapp2():
     with project():
@@ -900,11 +895,23 @@ def deploy():
 
     return True
 
+@task
+@log_call
+@roles("database")
+def backupdb():
+    """
+    Back up the database. No history of previous backups.
+    """
+    with cd(env.venv_path):
+        backup("last-%s.db" % env.proj_name)
 
 @task
 @log_call
 @roles("application",'cron')
 def rolebackapp():
+    """
+    Restores to the previous application deployment.
+    """
     with project():
         with update_changed_requirements():
             update = "git checkout" if env.git else "hg up -C"
@@ -918,6 +925,9 @@ def rolebackapp():
 @log_call
 @roles("database")
 def rolebackdb():
+    """
+    Restores to the previous deployment's database.
+    """
     with cd(env.venv_path):
         restore("last-%s.db" % env.proj_name)
 

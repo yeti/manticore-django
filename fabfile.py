@@ -10,7 +10,7 @@ import hashlib
 import tempfile
 from StringIO import StringIO
 import traceback
-
+from time import time, sleep
 from fabric.context_managers import settings
 from fabric.api import env, cd, prefix, sudo as _sudo, run as _run, hide, task, get, puts, put, roles, execute
 from fabric.contrib.files import exists, upload_template, _escape_for_regex, append
@@ -44,18 +44,26 @@ env.password = conf.get("SSH_PASS", None)
 env.key_filename = conf.get("SSH_KEY_PATH", None)
 env.roledefs = {
     'application': conf.get("APPLICATION_HOSTS"),
-    'database': conf.get("DATABASE_HOSTS"),
+    'database': conf.get("DATABASE_HOSTS")[0:1],
+    'db_slave': conf.get("DATABASE_HOSTS")[1:],
     'cron': conf.get("CRON_HOSTS", conf.get("APPLICATION_HOSTS")),
 }
+env.application_hosts = conf.get("APPLICATION_HOSTS") # used for our own consumption
+env.cron_hosts = conf.get("CRON_HOSTS", conf.get("APPLICATION_HOSTS")) # used for our own consumption
+env.database_hosts = conf.get("DATABASE_HOSTS") # used for matching public and private database host IP addresses
 env.private_database_hosts = conf.get("PRIVATE_DATABASE_HOSTS", ["127.0.0.1"])
 env.primary_database_host = env.private_database_hosts[0] # the first listed private database host is the master, used by live_settings.py
 env.private_application_hosts = conf.get("PRIVATE_APPLICATION_HOSTS", ["127.0.0.1"])
 if conf.get("LIVE_HOSTNAME"):
-    tmp_hosts = conf.get("APPLICATION_HOSTS")
+    tmp_hosts = list()
+    tmp_hosts.append(conf.get("APPLICATION_HOSTS"))
     tmp_hosts.append(conf.get("LIVE_HOSTNAME"))
     env.allowed_hosts = ",".join(["'%s'" % host for host in tmp_hosts]) # used by live_settings.py to set Django's allowed hosts
 else:
     env.allowed_hosts = ",".join(["'%s'" % host for host in conf.get("APPLICATION_HOSTS")]) # used by live_settings.py to set Django's allowed hosts
+
+assert len(env.private_database_hosts) == len(env.database_hosts), "Same number of DATABASE_HOSTS and PRIVATE_DATABASE_HOSTS must be listed"
+assert len(env.private_application_hosts) == len(env.application_hosts), "Same number of APPLICATION_HOSTS and PRIVATE_APPLICATION_HOSTS must be listed"
 
 env.proj_name = conf.get("PROJECT_NAME", os.getcwd().split(os.sep)[-1])
 env.venv_home = conf.get("VIRTUALENV_HOME", "/home/%s" % env.user)
@@ -75,6 +83,7 @@ env.linux_distro = conf.get("LINUX_DISTRO", "squeeze")
 
 env.deploy_my_public_key = conf.get("DEPLOY_MY_PUBLIC_KEY")
 env.deploy_ssh_key_path = conf.get("DEPLOY_SSH_KEY_PATH")
+env.deploy_db_cluster_key_path = conf.get("DEPLOY_DB_CLUSTER_SSH_KEY_PATH")
 
 ##################
 # Template setup #
@@ -297,11 +306,11 @@ def modify_config_file(remote_path, settings=None, comment_char='#', setter_char
         for setting in settings:
             if not setting in changes_done:
                 if type == CONFIG_FILE_NORMAL:
-                    line = "%s %s %s" % (setting[0], setter_char, setting[1])
+                    line = "%s %s %s\n" % (setting[0], setter_char, setting[1])
                     print line
                     newlines.append(line)
                 elif type == CONFIG_FILE_RECORDS:
-                    line = "\t".join(setting)
+                    line = "\t".join(setting) + "\n"
                     print line
                     newlines.append(line)
 
@@ -323,6 +332,17 @@ def modify_config_file(remote_path, settings=None, comment_char='#', setter_char
                 #mirror_local_mode=mirror_local_mode,
                 #mode=mode
             )
+
+
+def fancy_append(remote_filename, contents):
+    """
+    Fixes append() because it duplicates content of authorized_keys. Returns False if no operation, True if a file was appended.
+    """
+    test = run("cat %s" % remote_filename, show=False)
+    if test.find(contents) != -1:
+        return True
+    else:
+        append(remote_filename, contents)
 
 
 ######################################
@@ -395,7 +415,7 @@ def print_command(command):
 
 
 @task
-@roles('application','cron','database')
+@roles('application','cron','database','db_slave')
 def run(command, show=True):
     """
     Runs a shell comand on the remote server.
@@ -407,7 +427,7 @@ def run(command, show=True):
 
 
 @task
-@roles('application','cron','database')
+@roles('application','cron','database','db_slave')
 def sudo(command, show=True):
     """
     Runs a command as sudo.
@@ -481,7 +501,7 @@ def db_pass():
 
 
 @task
-@roles('application','cron','database')
+@roles('application','cron','database','db_slave')
 def apt(packages):
     """
     Installs one or more system packages via apt.
@@ -568,18 +588,34 @@ def manage(command):
 # SSH key setup         #
 #########################
 
-@roles('application','cron','database')
+@roles('application','cron','database','db_slave')
 def copymysshkey():
     if env.deploy_my_public_key and len(env.deploy_my_public_key) > 0:
         with open(os.path.expanduser(env.deploy_my_public_key)) as f:
-            append("~/.ssh/authorized_keys", f.readline().rstrip('\n'))
+            run("mkdir -p ~/.ssh")
+            fancy_append("~/.ssh/authorized_keys", f.readline().rstrip('\n'))
 
 @roles('application','cron')
 def copydeploykey():
     # we do not copy the deployment ssh key (which accesses your repo) onto the database server
     if env.deploy_ssh_key_path and len(env.deploy_ssh_key_path) > 0:
+        run("mkdir -p ~/.ssh")
         put(env.deploy_ssh_key_path, "~/.ssh/%s" % os.path.basename(env.deploy_ssh_key_path),mode=0600)
-        append("~/.ssh/config", StringIO("IdentityFile ~/.ssh/%s" % os.path.basename(env.deploy_ssh_key_path)))
+        fancy_append("~/.ssh/config", "IdentityFile ~/.ssh/%s" % os.path.basename(env.deploy_ssh_key_path))
+
+@roles('database','db_slave')
+def copy_db_ssh_keys():
+    if env.deploy_db_cluster_key_path and len(env.deploy_db_cluster_key_path) > 0:
+        with settings(sudo_user='postgres'):
+            home_dir = run("echo ~postgres").rstrip('\n')
+            run("mkdir -p %s/.ssh" % home_dir)
+            remote_path = "%s/.ssh/%s" % (home_dir, os.path.basename(env.deploy_db_cluster_key_path))
+            put(env.deploy_db_cluster_key_path, remote_path, mode=0600)
+            pub_key = run("ssh-keygen -y -f %s" % remote_path, show=False)
+            fancy_append("%s/.ssh/config" % home_dir, "IdentityFile %s" % remote_path)
+            fancy_append("%s/.ssh/authorized_keys" % home_dir, pub_key.rstrip('\n'))
+        # return to root user and then change the owner of postgres
+        sudo("chown -R postgres:postgres %s/.ssh" % home_dir)
 
 @task
 @log_call
@@ -590,11 +626,13 @@ def copysshkeys():
     """
     execute(copymysshkey)
     execute(copydeploykey)
+    execute(copy_db_ssh_keys)
 
 #########################
 # Install and configure #
 #########################
 
+@task
 @roles('application','cron','database')
 def install_prereq():
     locale = "LC_ALL=%s" % env.locale
@@ -605,6 +643,7 @@ def install_prereq():
     sudo("apt-get update -y -q")
     apt("git-core supervisor")
 
+@task
 @roles('application','cron')
 def installapp():
     apt("nginx libjpeg-dev python-dev python-setuptools "
@@ -612,16 +651,17 @@ def installapp():
     sudo("easy_install pip")
     sudo("pip install virtualenv mercurial")
 
-@roles('database')
+@task
+@roles('database','db_slave')
 def installdb():
     put(StringIO("deb http://apt.postgresql.org/pub/repos/apt/ %s-pgdg main" % env.linux_distro), "/etc/apt/sources.list.d/pgdg.list")
     sudo("wget --quiet -O - http://apt.postgresql.org/pub/repos/apt/ACCC4CF8.asc | sudo apt-key add -")
     sudo("apt-get update")
-    apt("postgresql-9.2 postgresql-contrib-9.2")
+    apt("postgresql-9.2 postgresql-contrib-9.2 bzip2 rsync") # bzip2 for compression
 
 
 @task
-@roles("database")
+@roles("database",'db_slave')
 @log_call
 def uninstalldb():
     """
@@ -723,8 +763,45 @@ def createapp2():
             shadowed = "*" * len(pw)
             print_command(user_py.replace("'%s'" % pw, "'%s'" % shadowed))
 
+def get_private_db_host_from_public_host():
+    if not env.host_string in env.database_hosts:
+        abort("Could not recognize the database host %s" % env.host_string)
+    host_index = env.database_hosts.index(env.host_string)
+    private_host = env.private_database_hosts[host_index]
+    return (host_index, private_host)
+
+
+def write_postgres_conf():
+    # Configure database server to listen to appropriate ports. Tested with Debian 6 and Postgres 9.2
+    (host_index, private_host) = get_private_db_host_from_public_host()
+
+    postgres_conf = [
+                           ("port", "5432"),
+                           ("listen_addresses","'%s'" % ",".join([env.host_string, private_host, "127.0.0.1"])), # public IP, private IP, localhost
+                           ("wal_level","hot_standby"),
+                           ("max_wal_senders", str(len(env.private_database_hosts)+1)),
+                           ("wal_keep_segments", "32"),
+                       ]
+
+    if host_index < len(env.private_database_hosts) - 1:
+        postgres_conf.extend([("archive_mode", "on"),
+                              ("archive_command", "'rsync -aq -e ssh %p postgres@" + env.private_database_hosts[host_index + 1] + ":/var/lib/postgresql/9.2/archive/%f'"),
+                              ("archive_timeout", "3600"),
+                              ])
+    else:
+        postgres_conf.extend([("archive_mode", "off"),])
+
+    modify_config_file("/etc/postgresql/9.2/main/postgresql.conf", postgres_conf)
+
+def write_hba_conf():
+    client_list = [('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_application_hosts]
+    client_list.extend([('host', 'replication', 'replicator', '%s/32' % client, 'trust') for client in env.private_database_hosts])
+    client_list.append(('local', 'replication', 'postgres', 'trust'))
+    modify_config_file('/etc/postgresql/9.2/main/pg_hba.conf', client_list, type="records")
+
+
 @roles("database")
-def createdb_config():
+def createdb_master():
     # create virtual environment directory and project path within
     if not exists(env.venv_path):
         prompt = raw_input("\nProject directory doesn't exist: %s\nWould you like "
@@ -735,16 +812,77 @@ def createdb_config():
 
         sudo("mkdir %s" % env.venv_path)
 
-    # Configure database server to listen to appropriate ports. Tested with Debian 6 and Postgres 9.2
-    modify_config_file("/etc/postgresql/9.2/main/postgresql.conf",[("port", "5432"), ("listen_addresses","'%s'" % ",".join(env.private_database_hosts))])
-    client_list = [('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_application_hosts]
-    modify_config_file('/etc/postgresql/9.2/main/pg_hba.conf', client_list, type="records")
+    write_postgres_conf()
+    write_hba_conf()
+    # Configure permissions for application servers
+    with settings(warn_only=True):
+        sudo("rm /var/lib/postgresql/9.2/main/recovery.conf") # erase all settings in the replication conf
+
     restartdb()
 
+@roles('database')
+def createdb_snapshot_master():
+    run("pg_basebackup -U postgres -D - -P -Ft | bzip2 > /var/tmp/pg_basebackup.tar.bz2")
+    get("/var/tmp/pg_basebackup.tar.bz2","/var/tmp/pg_basebackup.tar.bz2") # copy from master /var/tmp to this computer's /var/tmp
+
+@roles('db_slave')
+def stop_slave_db():
+    if len(env.host_string) == 0:
+        return
+
+    sudo("/etc/init.d/postgresql stop")
+    # also do some slave server setup
+    sudo("mkdir -p /var/lib/postgresql/9.2/archive")
+    sudo("chown postgres /var/lib/postgresql/9.2/archive")
+
+@roles('db_slave')
+def createdb_slave():
+    if len(env.host_string) == 0:
+        return
+
+    (host_index, private_host) = get_private_db_host_from_public_host()
+
+    sudo("/etc/init.d/postgresql stop")
+
+    write_postgres_conf()
+    write_hba_conf()
+
+    # Clone from the master database
+    put("/var/tmp/pg_basebackup.tar.bz2","/var/tmp/pg_basebackup.tar.bz2")
+    with cd("/var/lib/postgresql/9.2/main/"):
+        run("rm -rf *")
+        run("tar -xjvf /var/tmp/pg_basebackup.tar.bz2")
+        sudo("chown -R postgres:postgres /var/lib/postgresql/9.2/main")
+
+    # Configure recovery for slave
+    put(StringIO("standby_mode = 'on'\n"
+                 "primary_conninfo = 'host=" + env.private_database_hosts[host_index-1] + " port=5432 user=replicator'\n"
+                 "trigger_file = '/tmp/pg_failover_trigger'\n"
+                 "restore_command = 'cp /var/lib/postgresql/9.2/archive/%f %p'\n"
+                 "archive_cleanup_command = 'pg_archivecleanup /var/lib/postgresql/9.2/archive/ %r'\n"
+                 ), "/var/lib/postgresql/9.2/main/recovery.conf") # erase all settings in the replication conf, or create the file as needed
+
+    sudo("/etc/init.d/postgresql start")
+
+    # wait a few seconds for streaming replication to start
+    retries = 0
+    while True:
+        retries = retries + 1
+        result = run("tail /var/log/postgresql/postgresql-9.2-main.log")
+        if result.find("streaming replication successfully connected to primary") == -1:
+            if retries > 5:
+                abort("Slave database did not start streaming replication")
+            else:
+                sleep(1)
+        else:
+            print("Slave database started with streaming")
+            break
+
 @roles("database")
-def createdb_database():
+def createdb_accounts():
     # Create DB and DB user.
     pw = db_pass()
+    psql("CREATE USER replicator REPLICATION LOGIN ENCRYPTED PASSWORD '%s';" % pw.replace("'", "\'"), show=False)
     user_sql_args = (env.proj_name, pw.replace("'", "\'"))
     user_sql = "CREATE USER %s WITH ENCRYPTED PASSWORD '%s';" % user_sql_args
     psql(user_sql, show=False)
@@ -755,14 +893,17 @@ def createdb_database():
          (env.proj_name, env.proj_name, env.locale, env.locale))
 
 @task
-@roles("database")
 @log_call
-def createdb():
+def createdb(warn_on_account_creation=False):
     """
     Sets up the database configuration, and then creates the database and superuser account.
     """
-    createdb_config()
-    createdb_database()
+    execute(stop_slave_db)
+    execute(createdb_master)
+    with settings(warn_only=warn_on_account_creation):
+        execute(createdb_accounts)
+    execute(createdb_snapshot_master)
+    execute(createdb_slave)
 
 @task
 @roles("database")
@@ -780,7 +921,7 @@ def upgradedb():
     sudo("rm /usr/lib/postgresql/8.4/bin/*") # remove old database version to prevent conflict in running postgresql commands
     apt("postgresql-9.2")
     sudo("/etc/init.d/postgresql start")
-    createdb_config()
+    createdb_master()
 
 @task
 @log_call
@@ -791,7 +932,7 @@ def create():
 
     execute(create_prereq)
     execute(createapp1)
-    execute(createdb)
+    createdb()
     execute(createapp2)
 
     return True
@@ -854,7 +995,7 @@ def restartapp():
 
 @task
 @log_call
-@roles("database")
+@roles("database",'db_slave')
 def restartdb():
     """
     Restarts postgres.

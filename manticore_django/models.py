@@ -39,6 +39,10 @@ def process_thumbnail(instance, sizes, crop=False):
     filename = os.path.basename(instance.original_photo.name).rsplit('.', 1)[0]
     extension = os.path.basename(instance.original_photo.name).rsplit('.', 1)[1]  # the file extension
 
+    # If there is no extension found try jpg
+    if extension == '':
+        extension = 'jpg'
+
     # use the file extension to determine if the image is valid before proceeding
     if extension not in ['jpg', 'jpeg', 'gif', 'png']:
         return False

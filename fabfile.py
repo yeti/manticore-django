@@ -12,7 +12,7 @@ from StringIO import StringIO
 import traceback
 from time import time, sleep
 from fabric.context_managers import settings
-from fabric.api import env, cd, prefix, sudo as _sudo, run as _run, hide, task, get, puts, put, roles, execute
+from fabric.api import env, cd, prefix, sudo as _sudo, run as _run, hide, task, get, puts, put, roles, execute, parallel
 from fabric.contrib.files import exists, upload_template, _escape_for_regex, append
 from fabric.colors import yellow, green, blue, red
 from fabric.utils import *
@@ -54,9 +54,10 @@ env.database_hosts = conf.get("DATABASE_HOSTS") # used for matching public and p
 env.private_database_hosts = conf.get("PRIVATE_DATABASE_HOSTS", ["127.0.0.1"])
 env.primary_database_host = env.private_database_hosts[0] # the first listed private database host is the master, used by live_settings.py
 env.private_application_hosts = conf.get("PRIVATE_APPLICATION_HOSTS", ["127.0.0.1"])
+env.private_cron_hosts = conf.get("PRIVATE_CRON_HOSTS", env.private_application_hosts)
 if conf.get("LIVE_HOSTNAME"):
     tmp_hosts = list()
-    tmp_hosts.append(conf.get("APPLICATION_HOSTS"))
+    tmp_hosts.extend(conf.get("APPLICATION_HOSTS"))
     tmp_hosts.append(conf.get("LIVE_HOSTNAME"))
     env.allowed_hosts = ",".join(["'%s'" % host for host in tmp_hosts]) # used by live_settings.py to set Django's allowed hosts
 else:
@@ -64,6 +65,8 @@ else:
 
 assert len(env.private_database_hosts) == len(env.database_hosts), "Same number of DATABASE_HOSTS and PRIVATE_DATABASE_HOSTS must be listed"
 assert len(env.private_application_hosts) == len(env.application_hosts), "Same number of APPLICATION_HOSTS and PRIVATE_APPLICATION_HOSTS must be listed"
+assert len(env.private_cron_hosts) == len(env.cron_hosts), "Same number of CRON_HOSTS and PRIVATE_CRON_HOSTS must be listed"
+
 
 env.proj_name = conf.get("PROJECT_NAME", os.getcwd().split(os.sep)[-1])
 env.venv_home = conf.get("VIRTUALENV_HOME", "/home/%s" % env.user)
@@ -338,11 +341,15 @@ def fancy_append(remote_filename, contents):
     """
     Fixes append() because it duplicates content of authorized_keys. Returns False if no operation, True if a file was appended.
     """
-    test = run("cat %s" % remote_filename, show=False)
-    if test.find(contents) != -1:
-        return True
-    else:
+    if not exists(remote_filename):
         append(remote_filename, contents)
+    else:
+        # read the file and look for the string not using regex
+        test = run("cat %s" % remote_filename, show=False)
+        if test.find(contents) != -1:
+            return True
+        else:
+            append(remote_filename, contents)
 
 
 ######################################
@@ -603,17 +610,35 @@ def copydeploykey():
         put(env.deploy_ssh_key_path, "~/.ssh/%s" % os.path.basename(env.deploy_ssh_key_path),mode=0600)
         fancy_append("~/.ssh/config", "IdentityFile ~/.ssh/%s" % os.path.basename(env.deploy_ssh_key_path))
 
+@task
+@log_call
 @roles('database','db_slave')
 def copy_db_ssh_keys():
+    """
+    Deploys SSH keys for database servers to talk to each other.
+    """
     if env.deploy_db_cluster_key_path and len(env.deploy_db_cluster_key_path) > 0:
         with settings(sudo_user='postgres'):
             home_dir = run("echo ~postgres").rstrip('\n')
+            if home_dir == "~postgres":
+                abort("postgres user account hasn't been created yet. Run this command again after installing postgresql.")
             run("mkdir -p %s/.ssh" % home_dir)
+
+            # add private key
             remote_path = "%s/.ssh/%s" % (home_dir, os.path.basename(env.deploy_db_cluster_key_path))
             put(env.deploy_db_cluster_key_path, remote_path, mode=0600)
+
+            # add public key and register it
             pub_key = run("ssh-keygen -y -f %s" % remote_path, show=False)
-            fancy_append("%s/.ssh/config" % home_dir, "IdentityFile %s" % remote_path)
             fancy_append("%s/.ssh/authorized_keys" % home_dir, pub_key.rstrip('\n'))
+            fancy_append("%s/.ssh/config" % home_dir, "IdentityFile %s" % remote_path)
+
+            # create known hosts
+            # WARNING: this has a risk of man in the middle attack because we don't check the identity of each host
+            for private_db_ip_addr in env.private_database_hosts:
+                ext_known_host = run("ssh-keyscan %s" % private_db_ip_addr)
+                fancy_append("%s/.ssh/known_hosts" % home_dir, ext_known_host)
+
         # return to root user and then change the owner of postgres
         sudo("chown -R postgres:postgres %s/.ssh" % home_dir)
 
@@ -626,7 +651,6 @@ def copysshkeys():
     """
     execute(copymysshkey)
     execute(copydeploykey)
-    execute(copy_db_ssh_keys)
 
 #########################
 # Install and configure #
@@ -714,6 +738,7 @@ def createapp1():
 
 @task
 @roles('application','cron')
+@parallel
 def createapp2():
     """
     Continuation of create. Used if the database already exists.
@@ -795,6 +820,7 @@ def write_postgres_conf():
 
 def write_hba_conf():
     client_list = [('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_application_hosts]
+    client_list.extend([('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_cron_hosts])
     client_list.extend([('host', 'replication', 'replicator', '%s/32' % client, 'trust') for client in env.private_database_hosts])
     client_list.append(('local', 'replication', 'postgres', 'trust'))
     modify_config_file('/etc/postgresql/9.2/main/pg_hba.conf', client_list, type="records")
@@ -868,8 +894,8 @@ def createdb_slave():
     retries = 0
     while True:
         retries = retries + 1
-        result = run("tail /var/log/postgresql/postgresql-9.2-main.log")
-        if result.find("streaming replication successfully connected to primary") == -1:
+        result = run("ps -ef | grep receiver")
+        if result.find("postgres: wal receiver process") == -1:
             if retries > 5:
                 abort("Slave database did not start streaming replication")
             else:
@@ -1022,6 +1048,7 @@ def createdirs():
         create()
 
 @roles("application")
+@parallel
 def deployapp1_application_templates():
     createdirs()
     for name in get_templates():
@@ -1030,6 +1057,7 @@ def deployapp1_application_templates():
             upload_template_and_reload(name)
 
 @roles("cron")
+@parallel
 def deployapp1_cron_templates():
     createdirs()
     for name in get_templates():
@@ -1038,6 +1066,7 @@ def deployapp1_cron_templates():
             upload_template_and_reload(name)
 
 @roles("application",'cron')
+@parallel
 def deployapp2():
     with project():
         static_dir = static()
@@ -1131,6 +1160,8 @@ def all():
     Installs everything required on a new system and deploy.
     From the base software, up to the deployed project.
     """
+    copysshkeys()
     install()
+    execute(copy_db_ssh_keys)
     if create():
         deploy()

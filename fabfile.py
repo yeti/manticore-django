@@ -848,7 +848,7 @@ def write_postgres_conf():
 
 def write_hba_conf():
     client_list = [('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_application_hosts]
-    client_list.extend([('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_cron_hosts])
+    client_list.extend([('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_cron_hosts if client not in env.private_application_hosts])
     client_list.extend([('host', 'replication', 'replicator_%s' % env.proj_name, '%s/32' % client, 'trust') for client in env.private_database_hosts])
     client_list.append(('local', 'replication', 'postgres', 'trust'))
     modify_config_file('/etc/postgresql/9.2/main/pg_hba.conf', client_list, type="records")

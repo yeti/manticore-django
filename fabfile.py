@@ -126,6 +126,30 @@ templates = {
     },
 }
 
+# Additional templates are created in code.
+#
+#  ssh
+#       ~/.ssh/authorized_keys
+#       ~/.ssh/config
+#       ~/.ssh/%(DEPLOY_SSH_KEY_PATH.basename())s
+#
+#  ssh_db
+#       ~postgres/.ssh/known_hosts
+#       ~postgres/.ssh/config
+#       ~postgres/.ssh/authorized_keys
+#       ~postgres/.ssh/$(DEPLOY_DB_CLUSTER_SSH_KEY_PATH.basename())s
+#
+#  postgresql
+#      /etc/postgresql/9.2/main/postgresql.conf
+#      /etc/postgresql/9.2/main/pg_hba.conf
+#
+#  db_slave
+#      /var/lib/postgresql/9.2/main/recovery.conf
+#      /var/lib/postgresql/9.2/archive
+#
+#  database, db_slave
+#      /var/tmp/pg_basebackup.tar.bz2
+
 
 ####################
 #  Utility Methods #
@@ -658,7 +682,7 @@ def copysshkeys():
 
 @task
 @parallel
-@roles('application','cron','database')
+@roles('application','cron','database','db_slave')
 def install_prereq():
     locale = "LC_ALL=%s" % env.locale
     with hide("stdout"):
@@ -667,6 +691,7 @@ def install_prereq():
             run("exit")
     sudo("apt-get update -y -q")
     apt("git-core supervisor")
+    sudo("ln -sf /usr/share/zoneinfo/UTC /etc/localtime")
 
 @task
 @parallel
@@ -701,7 +726,7 @@ def uninstalldb():
 @log_call
 def install():
     """
-    Installs the base system and Python requirements for the entire server.
+    Installs the base system, Python requirements, and timezone for all servers.
     """
     execute(install_prereq)
     execute(installapp)

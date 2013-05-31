@@ -27,6 +27,7 @@ In your `settings.py` file:
              "CRON_HOSTS": [], # Optional list of hosts to run the cron job, public IP addresses, defaults to APPLICATION_HOSTS if not specified
              "PRIVATE_APPLICATION_HOSTS": [], # List of private IP addresses which APPLICATION_HOSTS and CRON_HOSTS communicate with the database, defaults to 127.0.0.1
              "PRIVATE_DATABASE_HOSTS": [], # List of private IP addresses that DATABASE_HOSTS receives connections from the application server, defaults to 127.0.0.1. First entry is master, others are slaves.
+             "CRON_HOSTS": [], # Optional list of private IP addresses for CRON_HOSTS to communicate with the database, default is the same as PRIVATE_APPLICATION_HOSTS
              "VIRTUALENV_HOME":  "", # Absolute remote path for virtualenvs
              "PROJECT_NAME": "", # Unique identifier for project
              "REQUIREMENTS_PATH": "", # Path to pip requirements, relative to project

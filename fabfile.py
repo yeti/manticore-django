@@ -657,6 +657,7 @@ def copysshkeys():
 #########################
 
 @task
+@parallel
 @roles('application','cron','database')
 def install_prereq():
     locale = "LC_ALL=%s" % env.locale
@@ -668,6 +669,7 @@ def install_prereq():
     apt("git-core supervisor")
 
 @task
+@parallel
 @roles('application','cron')
 def installapp():
     apt("nginx libjpeg-dev python-dev python-setuptools "
@@ -676,6 +678,7 @@ def installapp():
     sudo("pip install virtualenv mercurial")
 
 @task
+@parallel
 @roles('database','db_slave')
 def installdb():
     put(StringIO("deb http://apt.postgresql.org/pub/repos/apt/ %s-pgdg main" % env.linux_distro), "/etc/apt/sources.list.d/pgdg.list")
@@ -821,7 +824,7 @@ def write_postgres_conf():
 def write_hba_conf():
     client_list = [('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_application_hosts]
     client_list.extend([('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_cron_hosts])
-    client_list.extend([('host', 'replication', 'replicator', '%s/32' % client, 'trust') for client in env.private_database_hosts])
+    client_list.extend([('host', 'replication', 'replicator_%s' % env.proj_name, '%s/32' % client, 'trust') for client in env.private_database_hosts])
     client_list.append(('local', 'replication', 'postgres', 'trust'))
     modify_config_file('/etc/postgresql/9.2/main/pg_hba.conf', client_list, type="records")
 
@@ -882,7 +885,7 @@ def createdb_slave():
 
     # Configure recovery for slave
     put(StringIO("standby_mode = 'on'\n"
-                 "primary_conninfo = 'host=" + env.private_database_hosts[host_index-1] + " port=5432 user=replicator'\n"
+                 "primary_conninfo = 'host=" + env.private_database_hosts[host_index-1] + " port=5432 user=replicator_" + env.proj_name + "'\n"
                  "trigger_file = '/tmp/pg_failover_trigger'\n"
                  "restore_command = 'cp /var/lib/postgresql/9.2/archive/%f %p'\n"
                  "archive_cleanup_command = 'pg_archivecleanup /var/lib/postgresql/9.2/archive/ %r'\n"
@@ -905,18 +908,19 @@ def createdb_slave():
             break
 
 @roles("database")
-def createdb_accounts():
-    # Create DB and DB user.
-    pw = db_pass()
-    psql("CREATE USER replicator REPLICATION LOGIN ENCRYPTED PASSWORD '%s';" % pw.replace("'", "\'"), show=False)
-    user_sql_args = (env.proj_name, pw.replace("'", "\'"))
-    user_sql = "CREATE USER %s WITH ENCRYPTED PASSWORD '%s';" % user_sql_args
-    psql(user_sql, show=False)
-    shadowed = "*" * len(pw)
-    print_command(user_sql.replace("'%s'" % pw, "'%s'" % shadowed))
-    psql("CREATE DATABASE %s WITH OWNER %s ENCODING = 'UTF8' "
-         "LC_CTYPE = '%s' LC_COLLATE = '%s' TEMPLATE template0;" %
-         (env.proj_name, env.proj_name, env.locale, env.locale))
+def createdb_accounts(warn_on_account_creation=False):
+    with settings(warn_only=warn_on_account_creation):
+        # Create DB and DB user.
+        pw = db_pass()
+        psql("CREATE USER replicator_%s REPLICATION LOGIN ENCRYPTED PASSWORD '%s';" % (env.proj_name, pw.replace("'", "\'")), show=False)
+        user_sql_args = (env.proj_name, pw.replace("'", "\'"))
+        user_sql = "CREATE USER %s WITH ENCRYPTED PASSWORD '%s';" % user_sql_args
+        psql(user_sql, show=False)
+        shadowed = "*" * len(pw)
+        print_command(user_sql.replace("'%s'" % pw, "'%s'" % shadowed))
+        psql("CREATE DATABASE %s WITH OWNER %s ENCODING = 'UTF8' "
+             "LC_CTYPE = '%s' LC_COLLATE = '%s' TEMPLATE template0;" %
+             (env.proj_name, env.proj_name, env.locale, env.locale))
 
 @task
 @log_call
@@ -926,8 +930,7 @@ def createdb(warn_on_account_creation=False):
     """
     execute(stop_slave_db)
     execute(createdb_master)
-    with settings(warn_only=warn_on_account_creation):
-        execute(createdb_accounts)
+    execute(createdb_accounts, warn_on_account_creation)
     execute(createdb_snapshot_master)
     execute(createdb_slave)
 
@@ -987,6 +990,7 @@ def removedb():
     with settings(warn_only=True):    
         psql("DROP DATABASE %s;" % env.proj_name)
         psql("DROP USER %s;" % env.proj_name)
+        psql("DROP USER replicator_%s;" % env.proj_name)
 
     # Configure database server to listen to appropriate ports. Tested with Debian 6 and Postgres 9.2
     warn("TODO modify /etc/postgresql/9.2/main/pg_hba.conf")
@@ -1087,6 +1091,15 @@ def deployapp2():
 
 @task
 @log_call
+@roles("database","db_slave")
+def deploydb_hba():
+    """
+    Deploys the permission list for the database.
+    """
+    write_hba_conf()
+
+@task
+@log_call
 def deploy():
     """
     Deploy latest version of the project.
@@ -1099,9 +1112,11 @@ def deploy():
     execute(deployapp1_application_templates)
     execute(deployapp1_cron_templates)
     execute(backupdb)
+    execute(deploydb_hba)
     execute(deployapp2)
 
     return True
+
 
 @task
 @log_call

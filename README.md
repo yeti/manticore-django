@@ -74,3 +74,11 @@ I tested the script with the following configurations:
 
 * Debian 6 and Postgresql 9.2
 * Debian 6 and Postgresql 8.4 (deprecated)
+
+### Known Issues
+
+* If multiple DATABASE_HOSTS are provided, i.e., Streaming Replication is enabled, then each project must have its own
+  master and slave databases. The commands to archive and restore from backups are tightly coupled.
+
+* If a host is removed from APPLICATION_HOSTS, CRON_HOSTS, or DATABASE_HOSTS, you have to manually remove that
+  host entry from the Postgresql database configuration files.

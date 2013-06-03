@@ -881,7 +881,7 @@ def createdb_snapshot_master():
 
 @roles('db_slave')
 def stop_slave_db():
-    if len(env.host_string) == 0:
+    if not env.host_string or len(env.host_string) == 0:
         return
 
     sudo("/etc/init.d/postgresql stop")
@@ -891,7 +891,7 @@ def stop_slave_db():
 
 @roles('db_slave')
 def createdb_slave():
-    if len(env.host_string) == 0:
+    if not env.host_string or len(env.host_string) == 0:
         return
 
     (host_index, private_host) = get_private_db_host_from_public_host()

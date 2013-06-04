@@ -128,6 +128,7 @@ templates = {
         "local_path": "deploy/celeryd.conf",
         "remote_path": "/etc/supervisor/conf.d/%(proj_name)s.celery.conf",
         "required_module": "celery",
+        "reload_command": "supervisorctl reload",
     },
 }
 
@@ -1035,7 +1036,7 @@ def upgradedb():
 @task
 @roles("application","cron")
 @log_call
-def create_rabbit():
+def create_rabbit(warn_on_duplicate_accounts=False):
     """
     Creates the RabbitMQ account.
     """
@@ -1044,21 +1045,22 @@ def create_rabbit():
     with settings(warn_only=True):
         rabbitmqctl("delete_user guest")
 
-    rabbitmqctl("add_user %s %s" % (env.proj_name, env.admin_pass))
-    rabbitmqctl("add_vhost /%s" % env.proj_name)
-    rabbitmqctl('set_permissions -p /%s %s ".*" ".*" ".*"' % (env.proj_name, env.proj_name))
+    with settings(warn_only=warn_on_duplicate_accounts):
+        rabbitmqctl("add_user %s %s" % (env.proj_name, env.admin_pass))
+        rabbitmqctl("add_vhost /%s" % env.proj_name)
+        rabbitmqctl('set_permissions -p /%s %s ".*" ".*" ".*"' % (env.proj_name, env.proj_name))
 
 @task
 @log_call
-def create():
+def create(warn_on_duplicate_accounts=False):
     """
     Create a new virtual environment for a project. Pulls the project's repo from version control, adds system-level configs for the project, and initialises the database with the live host.
     """
 
     execute(create_prereq)
     execute(createapp1)
-    execute(create_rabbit)
-    createdb(False)
+    execute(create_rabbit, warn_on_duplicate_accounts)
+    createdb(warn_on_duplicate_accounts)
     execute(createapp2)
 
     return True
@@ -1181,6 +1183,9 @@ def createdirs():
 @roles("application")
 @parallel
 def deployapp1_application_templates():
+    if not env.host_string:
+        return
+
     createdirs()
     for name in get_templates():
         template = get_templates()[name]
@@ -1190,6 +1195,9 @@ def deployapp1_application_templates():
 @roles("cron")
 @parallel
 def deployapp1_cron_templates():
+    if not env.host_string:
+        return
+
     createdirs()
     for name in get_templates():
         template = get_templates()[name]

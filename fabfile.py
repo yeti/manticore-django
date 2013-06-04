@@ -1114,7 +1114,6 @@ def deployapp2():
         manage("migrate --noinput")
     restartapp()
 
-@task
 @log_call
 @roles("database","db_slave")
 def deploydb_hba():
@@ -1125,7 +1124,7 @@ def deploydb_hba():
 
 @task
 @log_call
-def deploy():
+def deploy(skip_db=False):
     """
     Deploy latest version of the project.
     Check out the latest version of the project from version
@@ -1136,8 +1135,9 @@ def deploy():
 
     execute(deployapp1_application_templates)
     execute(deployapp1_cron_templates)
-    execute(backupdb)
-    execute(deploydb_hba)
+    if not skip_db:
+        execute(backupdb)
+        execute(deploydb_hba)
     execute(deployapp2)
 
     return True

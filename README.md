@@ -8,6 +8,22 @@ Deployment script
 Manticore-django comes with a `fabric` deployment script. The script is based on Mezzanine's deployment script with additional features.
 These features allow the script to deploy an *application* and *database* server using different `settings.py`.
 
+Out of the box features:
+
+* Multiple independent application servers
+* Multiple independent cron servers (cron servers are identical to application servers with cron processes enabled)
+* Master and slave Postgres server with Streaming Replication
+* RabbitMQ asynchronous background task queue
+* SSH key installation
+
+### Requirements
+
+These requirements should be listed in your `pip` requirements file:
+
+* Django 1.5 or higher
+* Mezzanine 1.4.3 or higher
+* Celery (optional)
+
 ### Fabric Configuration
 
 This Fabric deploy script in Manticore-Django is a drop-in replacement for Mezzanine's fabric deployment.
@@ -15,7 +31,7 @@ In addition to Mezzanine's script, you are able to configure application, cron, 
 
 In your `settings.py` file:
 
-        FABRIC = 
+        FABRIC = {
              "SSH_USER": "", # SSH username
              "SSH_PASS":  "", # SSH password (consider key-based authentication)
              "SSH_KEY_PATH":  "", # Local path to SSH key file, for key-based auth
@@ -27,7 +43,7 @@ In your `settings.py` file:
              "CRON_HOSTS": [], # Optional list of hosts to run the cron job, public IP addresses, defaults to APPLICATION_HOSTS if not specified
              "PRIVATE_APPLICATION_HOSTS": [], # List of private IP addresses which APPLICATION_HOSTS and CRON_HOSTS communicate with the database, defaults to 127.0.0.1
              "PRIVATE_DATABASE_HOSTS": [], # List of private IP addresses that DATABASE_HOSTS receives connections from the application server, defaults to 127.0.0.1. First entry is master, others are slaves.
-             "CRON_HOSTS": [], # Optional list of private IP addresses for CRON_HOSTS to communicate with the database, default is the same as PRIVATE_APPLICATION_HOSTS
+             "PRIVATE_CRON_HOSTS": [], # Optional list of private IP addresses for CRON_HOSTS to communicate with the database, default is the same as PRIVATE_APPLICATION_HOSTS
              "VIRTUALENV_HOME":  "", # Absolute remote path for virtualenvs
              "PROJECT_NAME": "", # Unique identifier for project
              "REQUIREMENTS_PATH": "", # Path to pip requirements, relative to project
@@ -62,10 +78,42 @@ Add/replace the following lines to Mezzanine's `deploy/live_settings.py`:
             }
         }
 
+        # Django filtering
         ALLOWED_HOSTS = [%(allowed_hosts)s]
+
+        # Celery configuration
+        BROKER_URL = 'amqp://%(proj_name)s:%(admin_pass)s@127.0.0.1:5672/'
 
         # ...
 
+### deploy/celeryd.conf
+
+Add this file to your deploy directory along with `crontab`, `gunicorn.conf.py`, `live_settings.py`, `nginx.conf`, and
+`supervisorconf`.
+
+
+        ; ==============================================
+        ;  celery worker supervisor example for Django
+        ; ==============================================
+
+        [program:celery_%(proj_name)s]
+        command=%(proj_path)s/manage.py celery worker --loglevel=INFO
+        directory=%(proj_path)s
+        user=nobody
+        numprocs=1
+        stdout_logfile=/var/log/%(proj_name)s.celeryd.log
+        stderr_logfile=/var/log/%(proj_name)s.celeryd.log
+        autostart=true
+        autorestart=true
+        startsecs=10
+
+        ; Need to wait for currently executing tasks to finish at shutdown.
+        ; Increase this if you have very long running tasks.
+        stopwaitsecs = 600
+
+        ; if rabbitmq is supervised, set its priority higher
+        ; so it starts first
+        priority=998
 
 
 ### Tested Environments
@@ -77,8 +125,8 @@ I tested the script with the following configurations:
 
 ### Known Issues
 
-* If multiple DATABASE_HOSTS are provided, i.e., Streaming Replication is enabled, then each project must have its own
-  master and slave databases. The commands to archive and restore from backups are tightly coupled.
+* Each project must have its own database servers. Archiving, restoring, and Streaming Replication are tightly coupled
+  to the database server.
 
 * If the script fails in `fab all` because your project database already exists (i.e., an upgrade), you can
   complete the upgrade with `fab createdb:True createapp2 deploy`.

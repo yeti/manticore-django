@@ -124,6 +124,11 @@ templates = {
         "local_path": "deploy/live_settings.py",
         "remote_path": "%(proj_path)s/local_settings.py",
     },
+    "celery": {
+        "local_path": "deploy/celeryd.conf",
+        "remote_path": "/etc/supervisor/conf.d/%(proj_name)s.celery.conf",
+        "required_module": "celery",
+    },
 }
 
 # Additional templates are created in code.
@@ -148,7 +153,7 @@ templates = {
 #      /var/lib/postgresql/9.2/archive
 #
 #  database, db_slave
-#      /var/tmp/pg_basebackup.tar.bz2
+#      /var/tmp/pg_basebackup_%(proj_name)s.tar.bz2
 
 
 ####################
@@ -361,20 +366,48 @@ def modify_config_file(remote_path, settings=None, comment_char='#', setter_char
             )
 
 
-def fancy_append(remote_filename, contents):
+def append_to_remote_file_top(remote_filename, line):
+    """
+    Replaces the given line with the same at the top of the file.
+    """
+    if not exists(remote_filename):
+        append(remote_filename, line)
+    else:
+        # read the file and look for the string not using regex
+        test = run("cat %s" % remote_filename, show=False)
+        if test.find(line) != -1:
+            # this code moves the following line to the top of the file
+            file = StringIO()
+            get(remote_filename, file)
+            new_file = [line]
+            new_file.extend([l for l in file.getvalue().split("\n") if l != line])
+            new_text = "\n".join(new_file) + "\n"
+            put(StringIO(new_text), remote_filename)
+        else:
+            append(remote_filename, line)
+
+
+def fancy_append(remote_filename, line):
     """
     Fixes append() because it duplicates content of authorized_keys. Returns False if no operation, True if a file was appended.
     """
     if not exists(remote_filename):
-        append(remote_filename, contents)
+        append(remote_filename, line)
     else:
         # read the file and look for the string not using regex
         test = run("cat %s" % remote_filename, show=False)
-        if test.find(contents) != -1:
+        if test.find(line) != -1:
             return True
         else:
-            append(remote_filename, contents)
+            append(remote_filename, line)
 
+
+def check_requirements_file(module):
+    """
+    Checks a requirements file to see if a module is installed.
+    """
+    with open(env.reqs_path, "r") as f:
+        return f.read().find(module) != -1
 
 ######################################
 # Context for virtualenv and project #
@@ -500,6 +533,12 @@ def upload_template_and_reload(name):
     owner = template.get("owner")
     mode = template.get("mode")
     remote_data = ""
+    required_module = template.get("required_module")
+
+    # block uploading certain files (e.g., celery configuration) if it is not installed in requirements
+    if required_module and not check_requirements_file(required_module):
+        return
+
     if exists(remote_path):
         with hide("stdout"):
             remote_data = sudo("cat %s" % remote_path, show=False)
@@ -641,7 +680,7 @@ def copydeploykey():
     if env.deploy_ssh_key_path and len(env.deploy_ssh_key_path) > 0:
         run("mkdir -p ~/.ssh")
         put(env.deploy_ssh_key_path, "~/.ssh/%s" % os.path.basename(env.deploy_ssh_key_path),mode=0600)
-        fancy_append("~/.ssh/config", "IdentityFile ~/.ssh/%s" % os.path.basename(env.deploy_ssh_key_path))
+        append_to_remote_file_top("~/.ssh/config", "IdentityFile ~/.ssh/%s" % os.path.basename(env.deploy_ssh_key_path))
 
 @task
 @log_call
@@ -664,7 +703,7 @@ def copy_db_ssh_keys():
             # add public key and register it
             pub_key = run("ssh-keygen -y -f %s" % remote_path, show=False)
             fancy_append("%s/.ssh/authorized_keys" % home_dir, pub_key.rstrip('\n'))
-            fancy_append("%s/.ssh/config" % home_dir, "IdentityFile %s" % remote_path)
+            append_to_remote_file_top("%s/.ssh/config" % home_dir, "IdentityFile %s" % remote_path)
 
             # create known hosts
             # WARNING: this has a risk of man in the middle attack because we don't check the identity of each host
@@ -892,8 +931,8 @@ def createdb_master():
 
 @roles('database')
 def createdb_snapshot_master():
-    run("pg_basebackup -U postgres -D - -P -Ft | bzip2 > /var/tmp/pg_basebackup.tar.bz2")
-    get("/var/tmp/pg_basebackup.tar.bz2","/var/tmp/pg_basebackup.tar.bz2") # copy from master /var/tmp to this computer's /var/tmp
+    run("pg_basebackup -U postgres -D - -P -Ft | bzip2 > /var/tmp/pg_basebackup_%s.tar.bz2" % env.proj_name)
+    get("/var/tmp/pg_basebackup_%s.tar.bz2" % env.proj_name, "/var/tmp/pg_basebackup_%s.tar.bz2" % env.proj_name) # copy from master /var/tmp to this computer's /var/tmp
 
 @roles('db_slave')
 def stop_slave_db():
@@ -918,10 +957,10 @@ def createdb_slave():
     write_hba_conf()
 
     # Clone from the master database
-    put("/var/tmp/pg_basebackup.tar.bz2","/var/tmp/pg_basebackup.tar.bz2")
+    put("/var/tmp/pg_basebackup_%s.tar.bz2" % env.proj_name, "/var/tmp/pg_basebackup_%s.tar.bz2" % env.proj_name)
     with cd("/var/lib/postgresql/9.2/main/"):
         run("rm -rf *")
-        run("tar -xjvf /var/tmp/pg_basebackup.tar.bz2")
+        run("tar -xjvf /var/tmp/pg_basebackup_%s.tar.bz2" % env.proj_name)
         sudo("chown -R postgres:postgres /var/lib/postgresql/9.2/main")
 
     # Configure recovery for slave
@@ -1019,7 +1058,7 @@ def create():
     execute(create_prereq)
     execute(createapp1)
     execute(create_rabbit)
-    createdb()
+    createdb(False)
     execute(createapp2)
 
     return True
@@ -1059,6 +1098,14 @@ def removedb():
     warn("TODO modify /etc/postgresql/9.2/main/postgresql.conf")
 
 @task
+@roles("application","cron")
+@log_call
+def remove_rabbit():
+    with settings(warn_only=True):
+        rabbitmqctl("delete_user %s" % env.proj_name)
+        rabbitmqctl("delete_vhost /%s" % env.proj_name)
+
+@task
 @log_call
 def remove():
     """
@@ -1066,7 +1113,7 @@ def remove():
     """
     execute(removeapp)
     execute(removedb)
-
+    execute(remove_rabbit)
 
 ##############
 # Restart    #
@@ -1086,7 +1133,7 @@ def restart_rabbit():
 @roles("application",'cron')
 def restartapp():
     """
-    Restarts the gunicorn process.
+    Restarts the gunicorn and celery process.
     """
     pid_path = "%s/gunicorn.pid" % env.proj_path
     if exists(pid_path):
@@ -1094,6 +1141,9 @@ def restartapp():
     else:
         start_args = (env.proj_name, env.proj_name)
         sudo("supervisorctl start %s:gunicorn_%s" % start_args)
+
+    if check_requirements_file("celery"):
+        sudo("supervisorctl restart celery_%s" % env.proj_name)
 
 @task
 @log_call

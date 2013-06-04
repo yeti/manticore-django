@@ -615,6 +615,15 @@ def manage(command):
     """
     return run("%s %s" % (env.manage, command))
 
+
+@task
+@roles('application','cron')
+def rabbitmqctl(command):
+    """
+    Runs commands for RabbitMQ.
+    """
+    sudo("rabbitmqctl %s" % command)
+
 #########################
 # SSH key setup         #
 #########################
@@ -697,8 +706,11 @@ def install_prereq():
 @parallel
 @roles('application','cron')
 def installapp():
+    put(StringIO("deb http://www.rabbitmq.com/debian/ testing main"), "/etc/apt/sources.list.d/rabbitmq.list")
+    sudo("wget --quiet -O - http://www.rabbitmq.com/rabbitmq-signing-key-public.asc | sudo apt-key add -")
+    sudo("apt-get update")
     apt("nginx libjpeg-dev python-dev python-setuptools "
-        "libpq-dev memcached libffi-dev")
+        "libpq-dev memcached libffi-dev rabbitmq-server")
     sudo("easy_install pip")
     sudo("pip install virtualenv mercurial")
 
@@ -731,6 +743,10 @@ def install():
     execute(install_prereq)
     execute(installapp)
     execute(installdb)
+
+#########################
+# Create                #
+#########################
 
 @roles('application','cron','database')
 def create_prereq():
@@ -978,6 +994,22 @@ def upgradedb():
     createdb_master()
 
 @task
+@roles("application","cron")
+@log_call
+def create_rabbit():
+    """
+    Creates the RabbitMQ account.
+    """
+
+    # For security purposes we remove guest account from all servers.
+    with settings(warn_only=True):
+        rabbitmqctl("delete_user guest")
+
+    rabbitmqctl("add_user %s %s" % (env.proj_name, env.admin_pass))
+    rabbitmqctl("add_vhost /%s" % env.proj_name)
+    rabbitmqctl('set_permissions -p /%s %s ".*" ".*" ".*"' % (env.proj_name, env.proj_name))
+
+@task
 @log_call
 def create():
     """
@@ -986,10 +1018,15 @@ def create():
 
     execute(create_prereq)
     execute(createapp1)
+    execute(create_rabbit)
     createdb()
     execute(createapp2)
 
     return True
+
+#########################
+# Remove                #
+#########################
 
 @task
 @roles("application",'cron')
@@ -1030,9 +1067,19 @@ def remove():
     execute(removeapp)
     execute(removedb)
 
+
 ##############
-# Deployment #
+# Restart    #
 ##############
+
+@task
+@log_call
+@roles("application","cron")
+def restart_rabbit():
+    """
+    Restart RabbitMQ process
+    """
+    sudo("invoke-rc.d rabbitmq-server restart")
 
 @task
 @log_call
@@ -1061,8 +1108,9 @@ def restartdb():
 @log_call
 def restart():
     """
-    Restart gunicorn worker processes for the project.
+    Restart gunicorn worker processes, RabbitMQ, and the database.
     """
+    execute(restart_rabbit)
     execute(restartapp)
     execute(restartdb)
 
@@ -1075,6 +1123,10 @@ def createdirs():
             print "\nAborting!"
             return False
         create()
+
+##############
+# Deployment #
+##############
 
 @roles("application")
 @parallel
@@ -1095,7 +1147,6 @@ def deployapp1_cron_templates():
             upload_template_and_reload(name)
 
 @roles("application",'cron')
-@parallel
 def deployapp2():
     with project():
         static_dir = static()
@@ -1112,6 +1163,7 @@ def deployapp2():
         manage("collectstatic -v 0 --noinput")
         manage("syncdb --noinput")
         manage("migrate --noinput")
+    restart_rabbit()
     restartapp()
 
 @log_call
@@ -1142,6 +1194,9 @@ def deploy(skip_db=False):
 
     return True
 
+#########################
+# Backup and restore    #
+#########################
 
 @task
 @log_call
@@ -1192,6 +1247,27 @@ def rollback():
     execute(rolebackdb)
     execute(rolebackapp)
 
+#########################
+# Other administration  #
+#########################
+
+@task
+@log_call
+@roles("application","cron")
+def monitor_rabbit(enabled, administrator=False):
+    if enabled:
+        sudo("rabbitmq-plugins enable rabbitmq_management")
+        if administrator:
+            rabbitmqctl("set_user_tags %s administrator" % env.proj_name)
+        else:
+            rabbitmqctl("set_user_tags %s management" % env.proj_name)
+    else:
+        sudo("rabbitmq-plugins disable rabbitmq_management")
+        rabbitmqctl("set_user_tags %s" % env.proj_name)
+    restart_rabbit()
+
+    if enabled:
+        print("Monitoring at http://%s:15672" % (env.host_string))
 
 @task
 @log_call

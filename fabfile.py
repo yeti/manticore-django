@@ -1047,8 +1047,8 @@ def create_rabbit(warn_on_duplicate_accounts=False):
 
     with settings(warn_only=warn_on_duplicate_accounts):
         rabbitmqctl("add_user %s %s" % (env.proj_name, env.admin_pass))
-        rabbitmqctl("add_vhost /%s" % env.proj_name)
-        rabbitmqctl('set_permissions -p /%s %s ".*" ".*" ".*"' % (env.proj_name, env.proj_name))
+        rabbitmqctl("add_vhost %s" % env.proj_name)
+        rabbitmqctl('set_permissions -p %s %s ".*" ".*" ".*"' % (env.proj_name, env.proj_name))
 
 @task
 @log_call
@@ -1105,7 +1105,7 @@ def removedb():
 def remove_rabbit():
     with settings(warn_only=True):
         rabbitmqctl("delete_user %s" % env.proj_name)
-        rabbitmqctl("delete_vhost /%s" % env.proj_name)
+        rabbitmqctl("delete_vhost %s" % env.proj_name)
 
 @task
 @log_call

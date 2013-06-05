@@ -82,7 +82,7 @@ Add/replace the following lines to Mezzanine's `deploy/live_settings.py`:
         ALLOWED_HOSTS = [%(allowed_hosts)s]
 
         # Celery configuration
-        BROKER_URL = 'amqp://%(proj_name)s:%(admin_pass)s@127.0.0.1:5672/'
+        BROKER_URL = 'amqp://%(proj_name)s:%(admin_pass)s@127.0.0.1:5672/%(proj_name)s'
 
         # ...
 
@@ -91,14 +91,14 @@ Add/replace the following lines to Mezzanine's `deploy/live_settings.py`:
 Add this file to your deploy directory along with `crontab`, `gunicorn.conf.py`, `live_settings.py`, `nginx.conf`, and
 `supervisorconf`.
 
-
         ; ==============================================
         ;  celery worker supervisor example for Django
         ; ==============================================
 
         [program:celery_%(proj_name)s]
-        command=%(proj_path)s/manage.py celery worker --loglevel=INFO
+        command=%(manage)s celery worker --loglevel=INFO
         directory=%(proj_path)s
+        environment=PYTHONPATH='%(proj_path)s'
         user=nobody
         numprocs=1
         stdout_logfile=/var/log/%(proj_name)s.celeryd.log

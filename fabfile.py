@@ -58,7 +58,11 @@ env.private_cron_hosts = conf.get("PRIVATE_CRON_HOSTS", env.private_application_
 if conf.get("LIVE_HOSTNAME"):
     tmp_hosts = list()
     tmp_hosts.extend(conf.get("APPLICATION_HOSTS"))
-    tmp_hosts.append(conf.get("LIVE_HOSTNAME"))
+    if conf.get("LIVE_HOSTNAME") and not conf.get("LIVE_HOSTNAME") in tmp_hosts: # don't duplicate any host names
+        tmp_hosts.append(conf.get("LIVE_HOSTNAME"))
+    if not "127.0.0.1" in tmp_hosts: # nginx always comes from local host
+        tmp_hosts.append("127.0.0.1")
+
     env.allowed_hosts = ",".join(["'%s'" % host for host in tmp_hosts]) # used by live_settings.py to set Django's allowed hosts
 else:
     env.allowed_hosts = ",".join(["'%s'" % host for host in conf.get("APPLICATION_HOSTS")]) # used by live_settings.py to set Django's allowed hosts
@@ -1312,10 +1316,18 @@ def rollback():
 @task
 @log_call
 @roles("application","cron")
-def monitor_rabbit(enabled, administrator=False):
-    if enabled:
+def monitor_rabbit(enabled, administrator="off"):
+    if enabled != "on" and enabled != "off":
+        abort("enabled has to be on or off")
+        return
+
+    if administrator != "on" and administrator != "off":
+        abort("administrator has to be on or off")
+        return
+
+    if enabled=="on":
         sudo("rabbitmq-plugins enable rabbitmq_management")
-        if administrator:
+        if administrator=="on":
             rabbitmqctl("set_user_tags %s administrator" % env.proj_name)
         else:
             rabbitmqctl("set_user_tags %s management" % env.proj_name)
@@ -1324,7 +1336,7 @@ def monitor_rabbit(enabled, administrator=False):
         rabbitmqctl("set_user_tags %s" % env.proj_name)
     restart_rabbit()
 
-    if enabled:
+    if enabled=="on":
         print("Monitoring at http://%s:15672" % (env.host_string))
 
 @task

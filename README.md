@@ -129,7 +129,7 @@ I tested the script with the following configurations:
   to the database server.
 
 * If the script fails in `fab all` because your project database already exists (i.e., an upgrade), you can
-  complete the upgrade with `fab createdb:True createapp2 deploy`.
+  complete the upgrade with `fab create:True deploy`.
 
 *  Automatic failover is not implemented. If the master database fails, manually configure a slave database as the master.
 

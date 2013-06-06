@@ -829,7 +829,7 @@ def createapp1():
 @parallel
 def createapp2():
     """
-    Continuation of create. Used if the database already exists.
+    Continuation of create. Used if the database already exists. Upload certificate and site name.
     """
     # Set up SSL certificate.
     conf_path = "/etc/nginx/conf"

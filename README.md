@@ -47,6 +47,7 @@ In your `settings.py` file:
              "VIRTUALENV_HOME":  "", # Absolute remote path for virtualenvs
              "PROJECT_NAME": "", # Unique identifier for project
              "REQUIREMENTS_PATH": "", # Path to pip requirements, relative to project
+             "APT_REQUIREMENTS": ["",""], # Optional list of Debian apt-get packages that are prerequisities for pip packages
              "GUNICORN_PORT": 8000, # Port gunicorn will listen on
              "LOCALE": "en_US.UTF-8", # Should end with ".UTF-8"
              "LIVE_HOSTNAME": "www.example.com", # Host for public site.

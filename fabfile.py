@@ -91,6 +91,7 @@ env.linux_distro = conf.get("LINUX_DISTRO", "squeeze")
 env.deploy_my_public_key = conf.get("DEPLOY_MY_PUBLIC_KEY")
 env.deploy_ssh_key_path = conf.get("DEPLOY_SSH_KEY_PATH")
 env.deploy_db_cluster_key_path = conf.get("DEPLOY_DB_CLUSTER_SSH_KEY_PATH")
+env.apt_requirements = conf.get("APT_REQUIREMENTS", [])
 
 ##################
 # Template setup #
@@ -734,7 +735,6 @@ def copysshkeys():
 #########################
 
 @task
-@parallel
 @roles('application','cron','database','db_slave')
 def install_prereq():
     locale = "LC_ALL=%s" % env.locale
@@ -757,6 +757,7 @@ def installapp():
         "libpq-dev memcached libffi-dev rabbitmq-server")
     sudo("easy_install pip")
     sudo("pip install virtualenv mercurial")
+    apt(" ".join(env.apt_requirements))
 
 @task
 @parallel
@@ -1235,6 +1236,14 @@ def deploydb_hba():
     Deploys the permission list for the database.
     """
     write_hba_conf()
+
+@task
+@log_call
+def deployapp():
+    """
+    Deploy the application without upgrading the database. Useful for old version of Postgres.
+    """
+    deploy(True)
 
 @task
 @log_call

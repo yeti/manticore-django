@@ -24,6 +24,22 @@ These requirements should be listed in your `pip` requirements file:
 * Mezzanine 1.4.3 or higher
 * Celery (optional)
 
+### Usage Scenario
+
+1. First, a valid installation of Python 2.6 or higher must be installed on your computer. Installing Python is specific to your operating system.
+
+2. Optionally, virtualenvwrapper should be installed on your computer to keep Python projects separate: `pip install virtualenv`
+
+3. Fabric, a deployment scripting tool, must be installed: `pip install fabric`
+
+4. Your `settings.py` file has to be configured properly. See next section for details.
+
+5. If this is a first time installation, then (a) replace Mezzanine's fabric script with the one in this repository, (b) modify `deploy/live_settings.py`, and (c) add `deploy/celeryd.conf`. Then you set up your server with `fab all`.
+
+6. If you make major configuration changes, you should run `fab create:True deploy`.
+
+7. If you are changing only source code, you should run `fab deploy` or `fab deployapp`.
+
 ### Fabric Configuration
 
 This Fabric deploy script in Manticore-Django is a drop-in replacement for Mezzanine's fabric deployment.

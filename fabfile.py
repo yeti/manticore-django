@@ -1282,7 +1282,7 @@ def backupdb():
 @task
 @log_call
 @roles("application",'cron')
-def rolebackapp():
+def rollbackapp():
     """
     Restores to the previous application deployment.
     """
@@ -1298,7 +1298,7 @@ def rolebackapp():
 @task
 @log_call
 @roles("database")
-def rolebackdb():
+def rollbackdb():
     """
     Restores to the previous deployment's database.
     """

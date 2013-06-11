@@ -1163,11 +1163,18 @@ def restartdb():
 
 @task
 @log_call
+@roles("application","cron")
+def restart_celery():
+    if check_requirements_file("celery"):
+        sudo("supervisorctl restart celery_%s" % env.proj_name)
+
+@task
+@log_call
 def restart():
     """
-    Restart gunicorn worker processes, RabbitMQ, and the database.
+    Restart gunicorn worker processes, celery, and the database.
     """
-    execute(restart_rabbit)
+    execute(restart_celery)
     execute(restartapp)
     execute(restartdb)
 
@@ -1226,8 +1233,8 @@ def deployapp2():
         manage("collectstatic -v 0 --noinput")
         manage("syncdb --noinput")
         manage("migrate --noinput")
-    restart_rabbit()
     restartapp()
+    restart_celery()
 
 @log_call
 @roles("database","db_slave")
@@ -1294,6 +1301,7 @@ def rollbackapp():
             run("tar -xf %s" % join(env.proj_path, "last.tar"))
     
     restartapp()
+    restart_celery()
 
 @task
 @log_call
@@ -1326,6 +1334,9 @@ def rollback():
 @log_call
 @roles("application","cron")
 def monitor_rabbit(enabled, administrator="off"):
+    """
+    Changes the monitoring status of RabbitMQ. Restarts the server.
+    """
     if enabled != "on" and enabled != "off":
         abort("enabled has to be on or off")
         return

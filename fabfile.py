@@ -1323,8 +1323,8 @@ def rollback():
     and all static files. Calling rollback will revert all of these to
     their state prior to the last deploy.
     """
-    execute(rolebackdb)
-    execute(rolebackapp)
+    execute(rollbackdb)
+    execute(rollbackapp)
 
 #########################
 # Other administration  #

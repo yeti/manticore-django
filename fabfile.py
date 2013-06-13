@@ -743,7 +743,7 @@ def install_prereq():
             sudo("update-locale %s" % locale)
             run("exit")
     sudo("apt-get update -y -q")
-    apt("git-core supervisor")
+    apt("git-core supervisor libpq-dev")
     sudo("ln -sf /usr/share/zoneinfo/UTC /etc/localtime")
 
 @task
@@ -754,7 +754,7 @@ def installapp():
     sudo("wget --quiet -O - http://www.rabbitmq.com/rabbitmq-signing-key-public.asc | sudo apt-key add -")
     sudo("apt-get update")
     apt("nginx libjpeg-dev python-dev python-setuptools "
-        "libpq-dev memcached libffi-dev rabbitmq-server")
+        "memcached libffi-dev rabbitmq-server")
     sudo("easy_install pip")
     sudo("pip install virtualenv mercurial")
     apt(" ".join(env.apt_requirements))
@@ -897,7 +897,7 @@ def write_postgres_conf():
                            ("wal_keep_segments", "32"),
                        ]
 
-    if host_index < len(env.private_database_hosts) - 1:
+    if host_index < len(env.private_database_hosts) - 1: # for every host less than the last one, configure cascading replication
         postgres_conf.extend([("archive_mode", "on"),
                               ("archive_command", "'rsync -aq -e ssh %p postgres@" + env.private_database_hosts[host_index + 1] + ":/var/lib/postgresql/9.2/archive/%f'"),
                               ("archive_timeout", "3600"),
@@ -905,12 +905,15 @@ def write_postgres_conf():
     else:
         postgres_conf.extend([("archive_mode", "off"),])
 
+    if host_index > 0: # modifying a slave database
+        postgres_conf.append(("hot_standby", "on"))
+
     modify_config_file("/etc/postgresql/9.2/main/postgresql.conf", postgres_conf)
 
 def write_hba_conf():
     client_list = [('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_application_hosts]
     client_list.extend([('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_cron_hosts if client not in env.private_application_hosts])
-    client_list.extend([('host', 'replication', 'replicator_%s' % env.proj_name, '%s/32' % client, 'trust') for client in env.private_database_hosts])
+    client_list.extend([('host', 'replication', 'replicator%s' % env.proj_name, '%s/32' % client, 'trust') for client in env.private_database_hosts])
     client_list.append(('local', 'replication', 'postgres', 'trust'))
     modify_config_file('/etc/postgresql/9.2/main/pg_hba.conf', client_list, type="records")
 
@@ -946,9 +949,6 @@ def stop_slave_db():
         return
 
     sudo("/etc/init.d/postgresql stop")
-    # also do some slave server setup
-    sudo("mkdir -p /var/lib/postgresql/9.2/archive")
-    sudo("chown postgres /var/lib/postgresql/9.2/archive")
 
 @roles('db_slave')
 def createdb_slave():
@@ -964,6 +964,14 @@ def createdb_slave():
 
     # Clone from the master database
     put("/var/tmp/pg_basebackup_%s.tar.bz2" % env.proj_name, "/var/tmp/pg_basebackup_%s.tar.bz2" % env.proj_name)
+
+    # Remove old archive directory
+    with cd("/var/lib/postgresql/9.2/"):
+        with settings(warn_only=True):
+            run("rm -rf archive")
+        sudo("mkdir -p /var/lib/postgresql/9.2/archive")
+        sudo("chown postgres /var/lib/postgresql/9.2/archive")
+
     with cd("/var/lib/postgresql/9.2/main/"):
         run("rm -rf *")
         run("tar -xjvf /var/tmp/pg_basebackup_%s.tar.bz2" % env.proj_name)
@@ -971,10 +979,10 @@ def createdb_slave():
 
     # Configure recovery for slave
     put(StringIO("standby_mode = 'on'\n"
-                 "primary_conninfo = 'host=" + env.private_database_hosts[host_index-1] + " port=5432 user=replicator_" + env.proj_name + "'\n"
+                 "primary_conninfo = 'host=" + env.private_database_hosts[host_index-1] + " port=5432 user=replicator" + env.proj_name + "'\n"
                  "trigger_file = '/tmp/pg_failover_trigger'\n"
                  "restore_command = 'cp /var/lib/postgresql/9.2/archive/%f %p'\n"
-                 "archive_cleanup_command = 'pg_archivecleanup /var/lib/postgresql/9.2/archive/ %r'\n"
+                 "archive_cleanup_command = '/usr/lib/postgresql/9.2/bin/pg_archivecleanup /var/lib/postgresql/9.2/archive/ %r'\n"
                  ), "/var/lib/postgresql/9.2/main/recovery.conf") # erase all settings in the replication conf, or create the file as needed
 
     sudo("/etc/init.d/postgresql start")
@@ -998,7 +1006,7 @@ def createdb_accounts(warn_on_account_creation=False):
     with settings(warn_only=warn_on_account_creation):
         # Create DB and DB user.
         pw = db_pass()
-        psql("CREATE USER replicator_%s REPLICATION LOGIN ENCRYPTED PASSWORD '%s';" % (env.proj_name, pw.replace("'", "\'")), show=False)
+        psql("CREATE USER replicator%s REPLICATION LOGIN ENCRYPTED PASSWORD '%s';" % (env.proj_name, pw.replace("'", "\'")), show=False)
         user_sql_args = (env.proj_name, pw.replace("'", "\'"))
         user_sql = "CREATE USER %s WITH ENCRYPTED PASSWORD '%s';" % user_sql_args
         psql(user_sql, show=False)
@@ -1098,7 +1106,7 @@ def removedb():
     with settings(warn_only=True):    
         psql("DROP DATABASE %s;" % env.proj_name)
         psql("DROP USER %s;" % env.proj_name)
-        psql("DROP USER replicator_%s;" % env.proj_name)
+        psql("DROP USER replicator%s;" % env.proj_name)
 
     # Configure database server to listen to appropriate ports. Tested with Debian 6 and Postgres 9.2
     warn("TODO modify /etc/postgresql/9.2/main/pg_hba.conf")

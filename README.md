@@ -320,8 +320,8 @@ I tested the script with the following configurations:
 * Vagrant will use the repository copy of `vagrant_settings.py` and `manage.py` for your Django project. Local changes
   to the database and celery tasks will not take effect until `fab vagrant up` or `fab vagrant deploy` is run.
 
-* To use `local_settings.py` and the working (non-repository) copy instead of `vagrant_settings.py` and the repository copy
-  for migrations and celery, prefix all your tasks with `fab working`.
+* To use `local_settings.py` and the working (non-repository) copy, prefix all your tasks with `fab working`.
+  working uses the same FABRIC configuration as vagrant.
 
 * *NEVER* specify `VIRTUALENV_HOME` as the vagrant directory because it *will erase your local project*.
 

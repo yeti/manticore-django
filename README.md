@@ -146,24 +146,40 @@ Add this file to your deploy directory along with `crontab`, `gunicorn.conf.py`,
 Vagrant Configuration
 ---------------------
 
-        `fab vagrant`
+Usage scenario: you can use Pycharm to remotely connect to the Vagrant box for development. In development,
+`nginx`, `gunicorn`, and `cron` are disabled.
 
-Here is an example configuration for Vagrant. `nginx` and `cron` are disabled.
+1. `fab up`
+2. `fab vagrant up`
+3. `fab vagrant ...`
+4. `fab working up`
+5. `fab working ...`
 
-Usage scenario: you can use Pycharm to remotely connect to the Vagrant box for development.
+(1) and (2) are equivalent of each other. Both will setup a Vagrant instance.
 
-* Configure PyCharm 2.7+ Vagrant option to use a Debian 6+ 64-bit machine
-* Set the Project Interpreter to a Remote 127.0.0.1:2222
-* Database changes aren't persisted between Vagrant instances
-*
+(3) will allow you to issue any of the regular commands such as `deploy` and `restartapp` using Vagrant's configuration.
 
-Requirements:
+(4) and (5) are identical to Vagrant except that `manage.py` is run from `/vagrant/`'s directory, which is shared between
+host and client, instead of the repository's copy. When Vagrant is run, `/vagrant/<proj_name>/manage.py` replaces the
+one specified in `VIRTUALENV_HOME`. Make sure that you configure `BROKER_URL` if you intend to run `fab working up`.
+
+## Setting up PyCharm
+
+Prerequisites:
 
 * VirtualBox
 * Vagrant
-* Debian 6 box
 
-Example Fabric configuration in local_settings.py:
+Steps:
+
+1. Configure PyCharm 2.7+ Vagrant settings to a Debian 6+ 64-bit machine
+2. Set the Project Interpreter to a Remote 127.0.0.1:2222
+3. Change your *Run > Configuration* to bind to host `0.0.0.0`
+4. Configure `Vagrantfile` to forward guest port `8000` to a host port
+
+## local_settings.py
+
+Example Fabric configuration in `local_settings.py`:
 
         ...
 
@@ -200,6 +216,47 @@ Example Fabric configuration in local_settings.py:
         ...
 
 
+## deploy/vagrant_settings.py
+
+This is a copy of local_settings.py that will be pushed to the server when `fab vagrant` is called. Place
+*development* settings into this file, for example:
+
+        ...
+
+        DATABASES = {
+            "default": {
+                # Ends with "postgresql_psycopg2", "mysql", "sqlite3" or "oracle".
+                "ENGINE": "django.db.backends.postgresql_psycopg2",
+                # DB name or path to database file if using sqlite3.
+                "NAME": "%(proj_name)s",
+                # Not used with sqlite3.
+                "USER": "%(proj_name)s",
+                # Not used with sqlite3.
+                "PASSWORD": "%(db_pass)s",
+                # Set to empty string for localhost. Not used with sqlite3.
+                "HOST": "%(primary_database_host)s",
+                # Set to empty string for default. Not used with sqlite3.
+                "PORT": "",
+            }
+        }
+
+        ALLOWED_HOSTS = [%(allowed_hosts)s]
+
+        # Celery configuration
+        BROKER_URL = 'amqp://%(proj_name)s:%(admin_pass)s@127.0.0.1:5672/%(proj_name)s'
+
+        RAVEN_CONFIG = {}
+
+        CACHES = {
+            'default': {
+                'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
+            }
+        }
+
+        DEBUG = True
+
+        ...
+
 Release Notes
 -------------
 
@@ -218,8 +275,21 @@ I tested the script with the following configurations:
 * If the script fails in `fab all` because your project database already exists (i.e., an upgrade), you can
   complete the upgrade with `fab create:True deploy`.
 
-*  Automatic failover is not implemented. If the master database fails, manually configure a slave database as the master.
+* Automatic failover is not implemented. If the master database fails, manually configure a slave database as the master.
 
 * If a host is removed from APPLICATION_HOSTS, CRON_HOSTS, or DATABASE_HOSTS, you have to manually remove that
   host entry from the Postgresql database configuration files.
 
+## Vagrant Issues
+
+* Vagrant deployment does not run the cron task or nginx.
+
+* Vagrant will use the repository copy of `vagrant_settings.py` and `manage.py` for your Django project. Local changes
+  to the database and celery tasks will not take effect until `fab vagrant up` or `fab vagrant deploy` is run.
+
+* To use `local_settings.py` and the working (non-repository) copy instead of `vagrant_settings.py` and the repository copy
+  for migrations and celery, prefix all your tasks with `fab working`.
+
+* *NEVER* specify `VIRTUALENV_HOME` as the vagrant directory because it *will erase your local project*.
+
+* Database changes aren't persisted when a Vagrant instance is destroyed.

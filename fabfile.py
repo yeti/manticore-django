@@ -100,6 +100,8 @@ env.deploy_ssh_key_path = conf.get("DEPLOY_SSH_KEY_PATH")
 env.deploy_db_cluster_key_path = conf.get("DEPLOY_DB_CLUSTER_SSH_KEY_PATH")
 env.apt_requirements = conf.get("APT_REQUIREMENTS", [])
 
+env.mode = "live"
+
 ##################
 # Template setup #
 ##################
@@ -133,7 +135,7 @@ templates = {
         "remote_path": "%(proj_path)s/gunicorn.conf.py",
     },
     "settings": {
-        "local_path": "deploy/live_settings.py",
+        "local_path": "deploy/live_settings.py", # local task changes this filename
         "remote_path": "%(proj_path)s/local_settings.py",
     },
     "celery": {
@@ -1168,7 +1170,8 @@ def restartapp():
         sudo("kill -HUP `cat %s`" % pid_path)
     else:
         start_args = (env.proj_name, env.proj_name)
-        sudo("supervisorctl start %s:gunicorn_%s" % start_args)
+        if env.mode == "live": # gunicorn is turned off by local task
+            sudo("supervisorctl start %s:gunicorn_%s" % start_args)
 
     if check_requirements_file("celery"):
         sudo("supervisorctl restart celery_%s" % env.proj_name)
@@ -1251,7 +1254,8 @@ def deployapp2():
         run("git submodule init")
         run("git submodule sync")
         run("git submodule update")
-        manage("collectstatic -v 0 --noinput")
+        if env.mode == "live":
+            manage("collectstatic -v 0 --noinput")
         manage("syncdb --noinput")
         manage("migrate --noinput")
     restartapp()
@@ -1411,27 +1415,48 @@ def locales():
 def fix_db_permissions():
     sudo("chmod o+r /etc/postgresql/9.2/main/pg_hba.conf")
 
+#########################
+# Vagrant tasks
+#########################
+
 
 @task
 @log_call
-def local():
+def vagrant():
     """
-    Disables nginx and cron setup
+    Disables nginx, gunicorn, and cron setup. Use for Vagrant setup.
     """
     del templates["nginx"]
     del templates["cron"]
+    del templates["gunicorn"]
+    templates["settings"]["local_path"] = "deploy/vagrant_settings.py"
+    env.mode = "vagrant"
+
+    if env.venv_home.startswith("/vagrant/"):
+        abort("NEVER specify your virtual environment home as the shared directory between host and vm\n"
+              "You must reconfigure VIRTUALENV_HOME in your settings.py/local_settings.py")
 
 @task
 @log_call
-def vagrant(warn_on_duplicate_accounts=True):
+def working():
     """
-    Run this task first if you are running this script with Vagrant
+    Alternative of vagrant task that uses /vagrant shared directory instead of repository-committed changes.
+    """
+    vagrant()
+    env.manage = "%s/bin/python /vagrant/%s/manage.py" % (env.venv_path, env.proj_name)
+
+
+@task
+@log_call
+def up(warn_on_duplicate_accounts=True):
+    """
+    Sets up a Vagrant instance with the selected project
     """
 
     if warn_on_duplicate_accounts == "off" or warn_on_duplicate_accounts == "no":
         warn_on_duplicate_accounts = False
 
-    local()
+    vagrant()
 
     execute(locales)
     copysshkeys()

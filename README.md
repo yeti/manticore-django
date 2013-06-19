@@ -11,12 +11,12 @@ These features allow the script to deploy an *application* and *database* server
 Setup for:
 
 * Production server setup
-** Single application/cron/database server
-** Multiple independent application servers
-** Multiple independent cron servers (cron servers are identical to application servers with cron processes enabled)
-** Master and slave Postgres server with Streaming Replication
+  * Single application/cron/database server
+  * Multiple independent application servers
+  * Multiple independent cron servers (cron servers are identical to application servers with cron processes enabled)
+  * Master and slave Postgres server with Streaming Replication
 * Development server setup
-** Vagrant local setup
+  * Vagrant local setup
 
 Out of the box features:
 
@@ -85,7 +85,7 @@ In your `settings.py` file:
              "LINUX_DISTRO": "squeeze", # Linux distribution such as Debian 6.0 (squeeze), 7.0 (wheezy), Ubuntu 10.04 (lucid), Ubuntu 12.04 (precise)
          }
 
-## deploy/live_settings.py
+### deploy/live_settings.py
 
 Add/replace the following lines to Mezzanine's `deploy/live_settings.py`:
 
@@ -114,7 +114,7 @@ Add/replace the following lines to Mezzanine's `deploy/live_settings.py`:
 
         # ...
 
-## deploy/celeryd.conf
+### deploy/celeryd.conf
 
 Add this file to your deploy directory along with `crontab`, `gunicorn.conf.py`, `live_settings.py`, `nginx.conf`, and
 `supervisorconf`.
@@ -163,7 +163,7 @@ Usage scenario: you can use Pycharm to remotely connect to the Vagrant box for d
 host and client, instead of the repository's copy. When Vagrant is run, `/vagrant/<proj_name>/manage.py` replaces the
 one specified in `VIRTUALENV_HOME`. Make sure that you configure `BROKER_URL` if you intend to run `fab working up`.
 
-## Setting up PyCharm
+### Setting up PyCharm
 
 Prerequisites:
 
@@ -177,7 +177,7 @@ Steps:
 3. Change your *Run > Configuration* to bind to host `0.0.0.0`
 4. Configure `Vagrantfile` to forward guest port `8000` to a host port
 
-## local_settings.py
+### local_settings.py
 
 Example Fabric configuration in `local_settings.py`:
 
@@ -216,7 +216,7 @@ Example Fabric configuration in `local_settings.py`:
         ...
 
 
-## deploy/vagrant_settings.py
+### deploy/vagrant_settings.py
 
 This is a copy of local_settings.py that will be pushed to the server when `fab vagrant` is called. Place
 *development* settings into this file, for example:
@@ -260,14 +260,14 @@ This is a copy of local_settings.py that will be pushed to the server when `fab 
 Release Notes
 -------------
 
-## Tested Environments
+### Tested Environments
 
 I tested the script with the following configurations:
 
 * Debian 6 and Postgresql 9.2
 * Debian 6 and Postgresql 8.4 (deprecated)
 
-## Known Issues
+### Known Issues
 
 * Each project must have its own database servers. Archiving, restoring, and Streaming Replication are tightly coupled
   to the database server.
@@ -280,7 +280,7 @@ I tested the script with the following configurations:
 * If a host is removed from APPLICATION_HOSTS, CRON_HOSTS, or DATABASE_HOSTS, you have to manually remove that
   host entry from the Postgresql database configuration files.
 
-## Vagrant Issues
+### Vagrant Issues
 
 * Vagrant deployment does not run the cron task or nginx.
 

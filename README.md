@@ -59,31 +59,43 @@ In addition to Mezzanine's script, you are able to configure application, cron, 
 In your `settings.py` file:
 
         FABRIC = {
-             "SSH_USER": "", # SSH username
-             "SSH_PASS":  "", # SSH password (consider key-based authentication)
-             "SSH_KEY_PATH":  "", # Local path to SSH key file, for key-based auth
-             "DEPLOY_SSH_KEY_PATH": "", # Local path to an SSH private key that should be installed on the server for accessing remote repositories (optional)
-             "DEPLOY_MY_PUBLIC_KEY": "~/.ssh/id_rsa.pub", # Local path to your SSH public key so you can access the server (optional)
-             "DEPLOY_DB_CLUSTER_SSH_KEY_PATH":"", # Local path to an SSH private key that will be installed on DATABASE_HOSTS to install with the postgres user
-             "APPLICATION_HOSTS": [], # List of hosts to deploy to, public IP addresses
-             "DATABASE_HOSTS": [], # List of hosts to deploy to, public IP addresses for SSH access. First entry is master, others are slaves.
-             "CRON_HOSTS": [], # Optional list of hosts to run the cron job, public IP addresses, defaults to APPLICATION_HOSTS if not specified
-             "PRIVATE_APPLICATION_HOSTS": [], # List of private IP addresses which APPLICATION_HOSTS and CRON_HOSTS communicate with the database, defaults to 127.0.0.1
-             "PRIVATE_DATABASE_HOSTS": [], # List of private IP addresses that DATABASE_HOSTS receives connections from the application server, defaults to 127.0.0.1. First entry is master, others are slaves.
-             "PRIVATE_CRON_HOSTS": [], # Optional list of private IP addresses for CRON_HOSTS to communicate with the database, default is the same as PRIVATE_APPLICATION_HOSTS
-             "VIRTUALENV_HOME":  "", # Absolute remote path for virtualenvs
-             "PROJECT_NAME": "", # Unique identifier for project
-             "REQUIREMENTS_PATH": "", # Path to pip requirements, relative to project
-             "APT_REQUIREMENTS": ["",""], # Optional list of Debian apt-get packages that are prerequisities for pip packages
-             "GUNICORN_PORT": 8000, # Port gunicorn will listen on
-             "LOCALE": "en_US.UTF-8", # Should end with ".UTF-8"
-             "LIVE_HOSTNAME": "www.example.com", # Host for public site.
-             "SITENAME": "Default", # Registered sitename in Django.
-             "REPO_URL": "", # Git or Mercurial remote repo URL for the project
-             "DB_PASS": "", # Live database password
-             "ADMIN_PASS": "", # Live admin user password
-             "LINUX_DISTRO": "squeeze", # Linux distribution such as Debian 6.0 (squeeze), 7.0 (wheezy), Ubuntu 10.04 (lucid), Ubuntu 12.04 (precise)
-         }
+            "development": {
+                 "SSH_USER": "", # SSH username
+                 "SSH_PASS":  "", # SSH password (consider key-based authentication)
+                 "SSH_KEY_PATH":  "", # Local path to SSH key file, for key-based auth
+                 "DEPLOY_SSH_KEY_PATH": "", # Local path to an SSH private key that should be installed on the server for accessing remote repositories (optional)
+                 "DEPLOY_MY_PUBLIC_KEY": "~/.ssh/id_rsa.pub", # Local path to your SSH public key so you can access the server (optional)
+                 "DEPLOY_DB_CLUSTER_SSH_KEY_PATH":"", # Local path to an SSH private key that will be installed on DATABASE_HOSTS to install with the postgres user
+                 "APPLICATION_HOSTS": [], # List of hosts to deploy to, public IP addresses
+                 "DATABASE_HOSTS": [], # List of hosts to deploy to, public IP addresses for SSH access. First entry is master, others are slaves.
+                 "CRON_HOSTS": [], # Optional list of hosts to run the cron job, public IP addresses, defaults to APPLICATION_HOSTS if not specified
+                 "PRIVATE_APPLICATION_HOSTS": [], # List of private IP addresses which APPLICATION_HOSTS and CRON_HOSTS communicate with the database, defaults to 127.0.0.1
+                 "PRIVATE_DATABASE_HOSTS": [], # List of private IP addresses that DATABASE_HOSTS receives connections from the application server, defaults to 127.0.0.1. First entry is master, others are slaves.
+                 "PRIVATE_CRON_HOSTS": [], # Optional list of private IP addresses for CRON_HOSTS to communicate with the database, default is the same as PRIVATE_APPLICATION_HOSTS
+                 "VIRTUALENV_HOME":  "", # Absolute remote path for virtualenvs
+                 "PROJECT_NAME": "", # Unique identifier for project
+                 "REQUIREMENTS_PATH": "", # Path to pip requirements, relative to project
+                 "APT_REQUIREMENTS": ["",""], # Optional list of Debian apt-get packages that are prerequisities for pip packages
+                 "GUNICORN_PORT": 8000, # Port gunicorn will listen on
+                 "LOCALE": "en_US.UTF-8", # Should end with ".UTF-8"
+                 "LIVE_HOSTNAME": "www.example.com", # Host for public site.
+                 "SITENAME": "Default", # Registered sitename in Django.
+                 "REPO_URL": "", # Git or Mercurial remote repo URL for the project
+                 "DB_PASS": "", # Live database password
+                 "ADMIN_PASS": "", # Live admin user password
+                 "LINUX_DISTRO": "squeeze", # Linux distribution such as Debian 6.0 (squeeze), 7.0 (wheezy), Ubuntu 10.04 (lucid), Ubuntu 12.04 (precise)
+            },
+            "staging": {
+                 ...
+            },
+            "production" : {
+                ...
+            },
+            "vagrant": {
+                ... see below ...
+            }
+        }
+
 
 ### deploy/live_settings.py
 
@@ -143,6 +155,26 @@ Add this file to your deploy directory along with `crontab`, `gunicorn.conf.py`,
         ; so it starts first
         priority=998
 
+Modes
+-----
+
+1. `fab development ...`
+2. `fab staging ...`
+3. `fab production ...`
+4. `fab vagrant ...`
+5. `fab working ...`
+
+The **development** environment (1) is default. See the next section for (4) and (5).
+
+If something isn't working right and you want to know why, pass in a parameter `True` to these commands.
+
+1. `fab development:True`
+2. `fab staging:True`
+3. `fab production:True`
+4. `fab vagrant:True`
+5. `fab working:True`
+
+
 Vagrant Configuration
 ---------------------
 
@@ -155,7 +187,7 @@ Usage scenario: you can use Pycharm to remotely connect to the Vagrant box for d
 4. `fab working up`
 5. `fab working ...`
 
-(1) and (2) are equivalent of each other. Both will setup a Vagrant instance.
+(1) and (2) are equivalent of each other. Both will setup a Vagrant instance using the `"vagrant"` configuration in `FABRIC`.
 
 (3) will allow you to issue any of the regular commands such as `deploy` and `restartapp` using Vagrant's configuration.
 
@@ -184,36 +216,37 @@ Example Fabric configuration in `local_settings.py`:
         ...
 
         FABRIC = {
-            "SSH_USER": "vagrant", # SSH username
-            "SSH_PASS":  "vagrant", # SSH password (consider key-based authentication)
-            "SSH_KEY_PATH":  "", # Local path to SSH key file, for key-based auth
+            "vagrant": {
+                "SSH_USER": "vagrant", # SSH username
+                "SSH_PASS":  "vagrant", # SSH password (consider key-based authentication)
+                "SSH_KEY_PATH":  "", # Local path to SSH key file, for key-based auth
 
-            # deployment SSH key
-            #"DEPLOY_MY_PUBLIC_KEY": "~/.ssh/id_rsa.pub",
-            "DEPLOY_SSH_KEY_PATH": "<local-file.pub>",
-            #"DEPLOY_DB_CLUSTER_SSH_KEY_PATH": "<local-file.pem>",
+                # deployment SSH key
+                #"DEPLOY_MY_PUBLIC_KEY": "~/.ssh/id_rsa.pub",
+                "DEPLOY_SSH_KEY_PATH": "<local-file.pub>",
+                #"DEPLOY_DB_CLUSTER_SSH_KEY_PATH": "<local-file.pem>",
 
-            # Vagrant local box
-            "APPLICATION_HOSTS": ['127.0.0.1:2222'], # SSH port for Vagrant is 2222
-            "PRIVATE_APPLICATION_HOSTS": ['127.0.0.1'],
-            "DATABASE_HOSTS": ['127.0.0.1:2222'],  # SSH port for Vagrant is 2222
-            "PRIVATE_DATABASE_HOSTS":['127.0.0.1'],
-            "LIVE_HOSTNAME": "127.0.0.1",
-            "DB_PASS": "vagrant", # Live database password
-            "ADMIN_PASS": "vagrant", # Live admin user password
+                # Vagrant local box
+                "APPLICATION_HOSTS": ['127.0.0.1:2222'], # SSH port for Vagrant is 2222
+                "PRIVATE_APPLICATION_HOSTS": ['127.0.0.1'],
+                "DATABASE_HOSTS": ['127.0.0.1:2222'],  # SSH port for Vagrant is 2222
+                "PRIVATE_DATABASE_HOSTS":['127.0.0.1'],
+                "LIVE_HOSTNAME": "127.0.0.1",
+                "DB_PASS": "vagrant", # Live database password
+                "ADMIN_PASS": "vagrant", # Live admin user password
 
-            # application settings
-            "SITENAME": "<your-sitename>",
-            "VIRTUALENV_HOME":  "/home/vagrant", # Absolute remote path for virtualenvs
-            "PROJECT_NAME": "<your-project-name>", # Unique identifier for project
-            "REQUIREMENTS_PATH": "requirements/requirements.txt", # Path to pip requirements, relative to project
-            "GUNICORN_PORT": 8001, # Port gunicorn will listen on
-            "LOCALE": "en_US.UTF-8", # Should end with ".UTF-8"
-            "REPO_URL": "<your-repository>", # Git or Mercurial remote repo URL for the project
-            "LINUX_DISTRO": "squeeze", # Debian 6
+                # application settings
+                "SITENAME": "<your-sitename>",
+                "VIRTUALENV_HOME":  "/home/vagrant", # Absolute remote path for virtualenvs
+                "PROJECT_NAME": "<your-project-name>", # Unique identifier for project
+                "REQUIREMENTS_PATH": "requirements/requirements.txt", # Path to pip requirements, relative to project
+                "GUNICORN_PORT": 8001, # Port gunicorn will listen on
+                "LOCALE": "en_US.UTF-8", # Should end with ".UTF-8"
+                "REPO_URL": "<your-repository>", # Git or Mercurial remote repo URL for the project
+                "LINUX_DISTRO": "squeeze", # Debian 6
+            },
+            ... other deployment settings ...
         }
-
-        ...
 
 
 ### deploy/vagrant_settings.py

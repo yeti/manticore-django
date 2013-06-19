@@ -16,6 +16,7 @@ from fabric.api import env, cd, prefix, sudo as _sudo, run as _run, hide, task, 
 from fabric.contrib.files import exists, upload_template, _escape_for_regex, append
 from fabric.colors import yellow, green, blue, red
 from fabric.utils import *
+import simplejson
 from fabric.operations import prompt
 
 ################
@@ -29,78 +30,92 @@ def get_host(host_name):
     else:
         return host_name
 
-conf = {}
+
+def load_environment(conf, show_info):
+    if show_info:
+        print simplejson.dumps(conf, sort_keys=True, indent=4)
+
+    if not "APPLICATION_HOSTS" in conf or len(conf["APPLICATION_HOSTS"]) == 0:
+        abort("No application hosts are defined")
+    if not "DATABASE_HOSTS" in conf or len(conf["DATABASE_HOSTS"]) == 0:
+        abort("No database hosts are defined")
+
+    env.db_pass = conf.get("DB_PASS", None)
+    env.admin_pass = conf.get("ADMIN_PASS", None)
+    env.user = conf.get("SSH_USER", getuser())
+    env.password = conf.get("SSH_PASS", None)
+    env.key_filename = conf.get("SSH_KEY_PATH", None)
+    env.roledefs = {
+        'application': conf.get("APPLICATION_HOSTS"),
+        'database': conf.get("DATABASE_HOSTS")[0:1],
+        'db_slave': conf.get("DATABASE_HOSTS")[1:],
+        'cron': conf.get("CRON_HOSTS", conf.get("APPLICATION_HOSTS")),
+    }
+    env.application_hosts = conf.get("APPLICATION_HOSTS") # used for our own consumption
+    env.cron_hosts = conf.get("CRON_HOSTS", conf.get("APPLICATION_HOSTS")) # used for our own consumption
+    env.database_hosts = conf.get("DATABASE_HOSTS") # used for matching public and private database host IP addresses
+    env.private_database_hosts = conf.get("PRIVATE_DATABASE_HOSTS", ["127.0.0.1"])
+    env.primary_database_host = env.private_database_hosts[0] # the first listed private database host is the master, used by live_settings.py
+    env.private_application_hosts = conf.get("PRIVATE_APPLICATION_HOSTS", ["127.0.0.1"])
+    env.private_cron_hosts = conf.get("PRIVATE_CRON_HOSTS", env.private_application_hosts)
+    if conf.get("LIVE_HOSTNAME"):
+        tmp_hosts = list()
+        tmp_hosts.extend(conf.get("APPLICATION_HOSTS"))
+        if conf.get("LIVE_HOSTNAME") and not conf.get("LIVE_HOSTNAME") in tmp_hosts: # don't duplicate any host names
+            tmp_hosts.append(conf.get("LIVE_HOSTNAME"))
+        if not "127.0.0.1" in tmp_hosts: # nginx always comes from local host
+            tmp_hosts.append("127.0.0.1")
+
+        env.allowed_hosts = ",".join(["'%s'" % get_host(host) for host in tmp_hosts]) # used by live_settings.py to set Django's allowed hosts
+    else:
+        env.allowed_hosts = ",".join(["'%s'" % get_host(host) for host in conf.get("APPLICATION_HOSTS")]) # used by live_settings.py to set Django's allowed hosts
+
+    assert len(env.private_database_hosts) == len(env.database_hosts), "Same number of DATABASE_HOSTS and PRIVATE_DATABASE_HOSTS must be listed"
+    assert len(env.private_application_hosts) == len(env.application_hosts), "Same number of APPLICATION_HOSTS and PRIVATE_APPLICATION_HOSTS must be listed"
+    assert len(env.private_cron_hosts) == len(env.cron_hosts), "Same number of CRON_HOSTS and PRIVATE_CRON_HOSTS must be listed"
+
+
+    env.proj_name = conf.get("PROJECT_NAME", os.getcwd().split(os.sep)[-1])
+    env.venv_home = conf.get("VIRTUALENV_HOME", "/home/%s" % env.user)
+    env.venv_path = "%s/%s" % (env.venv_home, env.proj_name)
+    env.proj_dirname = "project"
+    env.proj_path = "%s/%s" % (env.venv_path, env.proj_dirname)
+    env.manage = "%s/bin/python %s/project/manage.py" % (env.venv_path,
+                                                         env.venv_path)
+    env.live_host = conf.get("LIVE_HOSTNAME", get_host(conf.get("APPLICATION_HOSTS")[0]) if conf.get("APPLICATION_HOSTS") else None)
+    env.sitename = conf.get("SITENAME", "Default")
+    env.repo_url = conf.get("REPO_URL", "")
+    env.git = env.repo_url.startswith("git") or env.repo_url.endswith(".git")
+    env.reqs_path = conf.get("REQUIREMENTS_PATH", None)
+    env.gunicorn_port = conf.get("GUNICORN_PORT", 8000)
+    env.locale = conf.get("LOCALE", "en_US.UTF-8")
+    env.linux_distro = conf.get("LINUX_DISTRO", "squeeze")
+
+    env.deploy_my_public_key = conf.get("DEPLOY_MY_PUBLIC_KEY")
+    env.deploy_ssh_key_path = conf.get("DEPLOY_SSH_KEY_PATH")
+    env.deploy_db_cluster_key_path = conf.get("DEPLOY_DB_CLUSTER_SSH_KEY_PATH")
+    env.apt_requirements = conf.get("APT_REQUIREMENTS", [])
+
+
+
 if sys.argv[0].split(os.sep)[-1] in ("fab",             # POSIX
                                      "fab-script.py"):  # Windows
     # Ensure we import settings from the current dir
     try:
-        conf = __import__("settings", globals(), locals(), [], 0).FABRIC
+        global_conf = {}
+        global_conf = __import__("settings", globals(), locals(), [], 0).FABRIC
         try:
-            conf["APPLICATION_HOSTS"][0]
-            conf["DATABASE_HOSTS"][0]
+            env.settings = global_conf # save settings to switch later
+            env.mode = "development"
+            load_environment(env.settings[env.mode], False)
+
         except (KeyError, ValueError):
             raise ImportError
     except (ImportError, AttributeError):
         print "Aborting, no hosts defined."
         exit()
 
-env.db_pass = conf.get("DB_PASS", None)
-env.admin_pass = conf.get("ADMIN_PASS", None)
-env.user = conf.get("SSH_USER", getuser())
-env.password = conf.get("SSH_PASS", None)
-env.key_filename = conf.get("SSH_KEY_PATH", None)
-env.roledefs = {
-    'application': conf.get("APPLICATION_HOSTS"),
-    'database': conf.get("DATABASE_HOSTS")[0:1],
-    'db_slave': conf.get("DATABASE_HOSTS")[1:],
-    'cron': conf.get("CRON_HOSTS", conf.get("APPLICATION_HOSTS")),
-}
-env.application_hosts = conf.get("APPLICATION_HOSTS") # used for our own consumption
-env.cron_hosts = conf.get("CRON_HOSTS", conf.get("APPLICATION_HOSTS")) # used for our own consumption
-env.database_hosts = conf.get("DATABASE_HOSTS") # used for matching public and private database host IP addresses
-env.private_database_hosts = conf.get("PRIVATE_DATABASE_HOSTS", ["127.0.0.1"])
-env.primary_database_host = env.private_database_hosts[0] # the first listed private database host is the master, used by live_settings.py
-env.private_application_hosts = conf.get("PRIVATE_APPLICATION_HOSTS", ["127.0.0.1"])
-env.private_cron_hosts = conf.get("PRIVATE_CRON_HOSTS", env.private_application_hosts)
-if conf.get("LIVE_HOSTNAME"):
-    tmp_hosts = list()
-    tmp_hosts.extend(conf.get("APPLICATION_HOSTS"))
-    if conf.get("LIVE_HOSTNAME") and not conf.get("LIVE_HOSTNAME") in tmp_hosts: # don't duplicate any host names
-        tmp_hosts.append(conf.get("LIVE_HOSTNAME"))
-    if not "127.0.0.1" in tmp_hosts: # nginx always comes from local host
-        tmp_hosts.append("127.0.0.1")
 
-    env.allowed_hosts = ",".join(["'%s'" % get_host(host) for host in tmp_hosts]) # used by live_settings.py to set Django's allowed hosts
-else:
-    env.allowed_hosts = ",".join(["'%s'" % get_host(host) for host in conf.get("APPLICATION_HOSTS")]) # used by live_settings.py to set Django's allowed hosts
-
-assert len(env.private_database_hosts) == len(env.database_hosts), "Same number of DATABASE_HOSTS and PRIVATE_DATABASE_HOSTS must be listed"
-assert len(env.private_application_hosts) == len(env.application_hosts), "Same number of APPLICATION_HOSTS and PRIVATE_APPLICATION_HOSTS must be listed"
-assert len(env.private_cron_hosts) == len(env.cron_hosts), "Same number of CRON_HOSTS and PRIVATE_CRON_HOSTS must be listed"
-
-
-env.proj_name = conf.get("PROJECT_NAME", os.getcwd().split(os.sep)[-1])
-env.venv_home = conf.get("VIRTUALENV_HOME", "/home/%s" % env.user)
-env.venv_path = "%s/%s" % (env.venv_home, env.proj_name)
-env.proj_dirname = "project"
-env.proj_path = "%s/%s" % (env.venv_path, env.proj_dirname)
-env.manage = "%s/bin/python %s/project/manage.py" % (env.venv_path,
-                                                     env.venv_path)
-env.live_host = conf.get("LIVE_HOSTNAME", get_host(conf.get("APPLICATION_HOSTS")[0]) if conf.get("APPLICATION_HOSTS") else None)
-env.sitename = conf.get("SITENAME", "Default")
-env.repo_url = conf.get("REPO_URL", "")
-env.git = env.repo_url.startswith("git") or env.repo_url.endswith(".git")
-env.reqs_path = conf.get("REQUIREMENTS_PATH", None)
-env.gunicorn_port = conf.get("GUNICORN_PORT", 8000)
-env.locale = conf.get("LOCALE", "en_US.UTF-8")
-env.linux_distro = conf.get("LINUX_DISTRO", "squeeze")
-
-env.deploy_my_public_key = conf.get("DEPLOY_MY_PUBLIC_KEY")
-env.deploy_ssh_key_path = conf.get("DEPLOY_SSH_KEY_PATH")
-env.deploy_db_cluster_key_path = conf.get("DEPLOY_DB_CLUSTER_SSH_KEY_PATH")
-env.apt_requirements = conf.get("APT_REQUIREMENTS", [])
-
-env.mode = "live"
 
 ##################
 # Template setup #
@@ -1170,7 +1185,7 @@ def restartapp():
         sudo("kill -HUP `cat %s`" % pid_path)
     else:
         start_args = (env.proj_name, env.proj_name)
-        if env.mode == "live": # gunicorn is turned off by local task
+        if env.mode != "vagrant": # gunicorn is turned off by local task
             sudo("supervisorctl start %s:gunicorn_%s" % start_args)
 
     if check_requirements_file("celery"):
@@ -1254,7 +1269,7 @@ def deployapp2():
         run("git submodule init")
         run("git submodule sync")
         run("git submodule update")
-        if env.mode == "live":
+        if env.mode != "vagrant":
             manage("collectstatic -v 0 --noinput")
         manage("syncdb --noinput")
         manage("migrate --noinput")
@@ -1397,8 +1412,32 @@ def all():
     if create():
         deploy()
 
+
 ########################
-# Vagrant-custom setup
+# Environment tasks
+########################
+
+@task
+@log_call
+def development(show_info=False):
+    env.mode = "development"
+    load_environment(env.settings[env.mode], show_info)
+
+@task
+@log_call
+def staging(show_info=False):
+    env.mode = "staging"
+    load_environment(env.settings[env.mode], show_info)
+
+
+@task
+@log_call
+def production(show_info=False):
+    env.mode = "production"
+    load_environment(env.settings[env.mode], show_info)
+
+########################
+# Vagrant tasks
 ########################
 
 @task
@@ -1415,22 +1454,20 @@ def locales():
 def fix_db_permissions():
     sudo("chmod o+r /etc/postgresql/9.2/main/pg_hba.conf")
 
-#########################
-# Vagrant tasks
-#########################
-
-
 @task
 @log_call
-def vagrant():
+def vagrant(show_info=False):
     """
     Disables nginx, gunicorn, and cron setup. Use for Vagrant setup.
     """
+
+    env.mode = "vagrant"
+    load_environment(env.settings[env.mode], show_info)
+
     del templates["nginx"]
     del templates["cron"]
     del templates["gunicorn"]
     templates["settings"]["local_path"] = "deploy/vagrant_settings.py"
-    env.mode = "vagrant"
 
     if env.venv_home.startswith("/vagrant/"):
         abort("NEVER specify your virtual environment home as the shared directory between host and vm\n"
@@ -1438,11 +1475,11 @@ def vagrant():
 
 @task
 @log_call
-def working():
+def working(show_info=False):
     """
     Alternative of vagrant task that uses /vagrant shared directory instead of repository-committed changes.
     """
-    vagrant()
+    vagrant(show_info)
     env.manage = "%s/bin/python /vagrant/%s/manage.py" % (env.venv_path, env.proj_name)
 
 

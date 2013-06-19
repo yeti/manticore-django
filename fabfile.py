@@ -16,11 +16,18 @@ from fabric.api import env, cd, prefix, sudo as _sudo, run as _run, hide, task, 
 from fabric.contrib.files import exists, upload_template, _escape_for_regex, append
 from fabric.colors import yellow, green, blue, red
 from fabric.utils import *
-
+from fabric.operations import prompt
 
 ################
 # Config setup #
 ################
+
+# removes the port
+def get_host(host_name):
+    if host_name.find(":") != -1:
+        return host_name[0:host_name.find(":")]
+    else:
+        return host_name
 
 conf = {}
 if sys.argv[0].split(os.sep)[-1] in ("fab",             # POSIX
@@ -63,9 +70,9 @@ if conf.get("LIVE_HOSTNAME"):
     if not "127.0.0.1" in tmp_hosts: # nginx always comes from local host
         tmp_hosts.append("127.0.0.1")
 
-    env.allowed_hosts = ",".join(["'%s'" % host for host in tmp_hosts]) # used by live_settings.py to set Django's allowed hosts
+    env.allowed_hosts = ",".join(["'%s'" % get_host(host) for host in tmp_hosts]) # used by live_settings.py to set Django's allowed hosts
 else:
-    env.allowed_hosts = ",".join(["'%s'" % host for host in conf.get("APPLICATION_HOSTS")]) # used by live_settings.py to set Django's allowed hosts
+    env.allowed_hosts = ",".join(["'%s'" % get_host(host) for host in conf.get("APPLICATION_HOSTS")]) # used by live_settings.py to set Django's allowed hosts
 
 assert len(env.private_database_hosts) == len(env.database_hosts), "Same number of DATABASE_HOSTS and PRIVATE_DATABASE_HOSTS must be listed"
 assert len(env.private_application_hosts) == len(env.application_hosts), "Same number of APPLICATION_HOSTS and PRIVATE_APPLICATION_HOSTS must be listed"
@@ -79,7 +86,7 @@ env.proj_dirname = "project"
 env.proj_path = "%s/%s" % (env.venv_path, env.proj_dirname)
 env.manage = "%s/bin/python %s/project/manage.py" % (env.venv_path,
                                                      env.venv_path)
-env.live_host = conf.get("LIVE_HOSTNAME", conf.get("APPLICATION_HOSTS")[0] if conf.get("APPLICATION_HOSTS") else None)
+env.live_host = conf.get("LIVE_HOSTNAME", get_host(conf.get("APPLICATION_HOSTS")[0]) if conf.get("APPLICATION_HOSTS") else None)
 env.sitename = conf.get("SITENAME", "Default")
 env.repo_url = conf.get("REPO_URL", "")
 env.git = env.repo_url.startswith("git") or env.repo_url.endswith(".git")
@@ -750,7 +757,7 @@ def install_prereq():
 @parallel
 @roles('application','cron')
 def installapp():
-    put(StringIO("deb http://www.rabbitmq.com/debian/ testing main"), "/etc/apt/sources.list.d/rabbitmq.list")
+    put(StringIO("deb http://www.rabbitmq.com/debian/ testing main"), "/etc/apt/sources.list.d/rabbitmq.list", use_sudo=True)
     sudo("wget --quiet -O - http://www.rabbitmq.com/rabbitmq-signing-key-public.asc | sudo apt-key add -")
     sudo("apt-get update")
     apt("nginx libjpeg-dev python-dev python-setuptools "
@@ -763,7 +770,7 @@ def installapp():
 @parallel
 @roles('database','db_slave')
 def installdb():
-    put(StringIO("deb http://apt.postgresql.org/pub/repos/apt/ %s-pgdg main" % env.linux_distro), "/etc/apt/sources.list.d/pgdg.list")
+    put(StringIO("deb http://apt.postgresql.org/pub/repos/apt/ %s-pgdg main" % env.linux_distro), "/etc/apt/sources.list.d/pgdg.list", use_sudo=True)
     sudo("wget --quiet -O - http://apt.postgresql.org/pub/repos/apt/ACCC4CF8.asc | sudo apt-key add -")
     sudo("apt-get update")
     apt("postgresql-9.2 postgresql-contrib-9.2 bzip2 rsync") # bzip2 for compression
@@ -908,14 +915,14 @@ def write_postgres_conf():
     if host_index > 0: # modifying a slave database
         postgres_conf.append(("hot_standby", "on"))
 
-    modify_config_file("/etc/postgresql/9.2/main/postgresql.conf", postgres_conf)
+    modify_config_file("/etc/postgresql/9.2/main/postgresql.conf", postgres_conf, use_sudo=True)
 
 def write_hba_conf():
     client_list = [('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_application_hosts]
     client_list.extend([('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_cron_hosts if client not in env.private_application_hosts])
     client_list.extend([('host', 'replication', 'replicator%s' % env.proj_name, '%s/32' % client, 'trust') for client in env.private_database_hosts])
     client_list.append(('local', 'replication', 'postgres', 'trust'))
-    modify_config_file('/etc/postgresql/9.2/main/pg_hba.conf', client_list, type="records")
+    modify_config_file('/etc/postgresql/9.2/main/pg_hba.conf', client_list, type="records", use_sudo=True)
 
 
 @roles("database")
@@ -1049,10 +1056,13 @@ def upgradedb():
 @task
 @roles("application","cron")
 @log_call
-def create_rabbit(warn_on_duplicate_accounts=False):
+def create_rabbit(warn_on_duplicate_accounts=True):
     """
     Creates the RabbitMQ account.
     """
+
+    if warn_on_duplicate_accounts == "off" or warn_on_duplicate_accounts == "no":
+        warn_on_duplicate_accounts = False
 
     # For security purposes we remove guest account from all servers.
     with settings(warn_only=True):
@@ -1065,10 +1075,13 @@ def create_rabbit(warn_on_duplicate_accounts=False):
 
 @task
 @log_call
-def create(warn_on_duplicate_accounts=False):
+def create(warn_on_duplicate_accounts=True):
     """
     Create a new virtual environment for a project. Pulls the project's repo from version control, adds system-level configs for the project, and initialises the database with the live host.
     """
+
+    if warn_on_duplicate_accounts == "off" or warn_on_duplicate_accounts == "no":
+        warn_on_duplicate_accounts = False
 
     execute(create_prereq)
     execute(createapp1)
@@ -1379,3 +1392,54 @@ def all():
     execute(copy_db_ssh_keys)
     if create():
         deploy()
+
+########################
+# Vagrant-custom setup
+########################
+
+@task
+@log_call
+@roles("application", "cron", "database", "db_slave")
+def locales():
+    # http://people.debian.org/~schultmc/locales.html
+    append("/etc/locale.gen", "en_US.UTF-8 UTF-8", use_sudo=True)
+    sudo("/usr/sbin/locale-gen")
+
+@task
+@log_call
+@roles("database","db_slave")
+def fix_db_permissions():
+    sudo("chmod o+r /etc/postgresql/9.2/main/pg_hba.conf")
+
+
+@task
+@log_call
+def local():
+    """
+    Disables nginx and cron setup
+    """
+    del templates["nginx"]
+    del templates["cron"]
+
+@task
+@log_call
+def vagrant(warn_on_duplicate_accounts=True):
+    """
+    Run this task first if you are running this script with Vagrant
+    """
+
+    if warn_on_duplicate_accounts == "off" or warn_on_duplicate_accounts == "no":
+        warn_on_duplicate_accounts = False
+
+    local()
+
+    execute(locales)
+    copysshkeys()
+    execute(install_prereq)
+    execute(installdb)
+    execute(fix_db_permissions)
+    execute(installapp)
+    execute(copy_db_ssh_keys)
+    if create(warn_on_duplicate_accounts):
+        deploy()
+

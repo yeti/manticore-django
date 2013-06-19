@@ -8,13 +8,23 @@ Deployment script
 Manticore-django comes with a `fabric` deployment script. The script is based on Mezzanine's deployment script with additional features.
 These features allow the script to deploy an *application* and *database* server using different `settings.py`.
 
+Setup for:
+
+* Production server setup
+** Single application/cron/database server
+** Multiple independent application servers
+** Multiple independent cron servers (cron servers are identical to application servers with cron processes enabled)
+** Master and slave Postgres server with Streaming Replication
+* Development server setup
+** Vagrant local setup
+
 Out of the box features:
 
-* Multiple independent application servers
-* Multiple independent cron servers (cron servers are identical to application servers with cron processes enabled)
-* Master and slave Postgres server with Streaming Replication
 * RabbitMQ asynchronous background task queue
-* SSH key installation
+* Celery support
+* Copy your SSH public key to the server
+* Copy your repository's private key to the server
+* Copy database public/private keys on every database server
 
 ### Requirements
 
@@ -22,7 +32,7 @@ These requirements should be listed in your `pip` requirements file:
 
 * Django 1.5 or higher
 * Mezzanine 1.4.3 or higher
-* Celery (optional)
+* django-celery (optional)
 
 ### Usage Scenario
 
@@ -40,7 +50,8 @@ These requirements should be listed in your `pip` requirements file:
 
 7. If you are changing only source code, you should run `fab deploy` or `fab deployapp`.
 
-### Fabric Configuration
+Fabric Configuration
+--------------------
 
 This Fabric deploy script in Manticore-Django is a drop-in replacement for Mezzanine's fabric deployment.
 In addition to Mezzanine's script, you are able to configure application, cron, and database hosts separately.
@@ -74,7 +85,7 @@ In your `settings.py` file:
              "LINUX_DISTRO": "squeeze", # Linux distribution such as Debian 6.0 (squeeze), 7.0 (wheezy), Ubuntu 10.04 (lucid), Ubuntu 12.04 (precise)
          }
 
-### deploy/live_settings.py
+## deploy/live_settings.py
 
 Add/replace the following lines to Mezzanine's `deploy/live_settings.py`:
 
@@ -103,7 +114,7 @@ Add/replace the following lines to Mezzanine's `deploy/live_settings.py`:
 
         # ...
 
-### deploy/celeryd.conf
+## deploy/celeryd.conf
 
 Add this file to your deploy directory along with `crontab`, `gunicorn.conf.py`, `live_settings.py`, `nginx.conf`, and
 `supervisorconf`.
@@ -132,15 +143,74 @@ Add this file to your deploy directory along with `crontab`, `gunicorn.conf.py`,
         ; so it starts first
         priority=998
 
+Vagrant Configuration
+---------------------
 
-### Tested Environments
+        `fab vagrant`
+
+Here is an example configuration for Vagrant. `nginx` and `cron` are disabled.
+
+Usage scenario: you can use Pycharm to remotely connect to the Vagrant box for development.
+
+* Configure PyCharm 2.7+ Vagrant option to use a Debian 6+ 64-bit machine
+* Set the Project Interpreter to a Remote 127.0.0.1:2222
+* Database changes aren't persisted between Vagrant instances
+*
+
+Requirements:
+
+* VirtualBox
+* Vagrant
+* Debian 6 box
+
+Example Fabric configuration in local_settings.py:
+
+        ...
+
+        FABRIC = {
+            "SSH_USER": "vagrant", # SSH username
+            "SSH_PASS":  "vagrant", # SSH password (consider key-based authentication)
+            "SSH_KEY_PATH":  "", # Local path to SSH key file, for key-based auth
+
+            # deployment SSH key
+            #"DEPLOY_MY_PUBLIC_KEY": "~/.ssh/id_rsa.pub",
+            "DEPLOY_SSH_KEY_PATH": "<local-file.pub>",
+            #"DEPLOY_DB_CLUSTER_SSH_KEY_PATH": "<local-file.pem>",
+
+            # Vagrant local box
+            "APPLICATION_HOSTS": ['127.0.0.1:2222'], # SSH port for Vagrant is 2222
+            "PRIVATE_APPLICATION_HOSTS": ['127.0.0.1'],
+            "DATABASE_HOSTS": ['127.0.0.1:2222'],  # SSH port for Vagrant is 2222
+            "PRIVATE_DATABASE_HOSTS":['127.0.0.1'],
+            "LIVE_HOSTNAME": "127.0.0.1",
+            "DB_PASS": "vagrant", # Live database password
+            "ADMIN_PASS": "vagrant", # Live admin user password
+
+            # application settings
+            "SITENAME": "<your-sitename>",
+            "VIRTUALENV_HOME":  "/home/vagrant", # Absolute remote path for virtualenvs
+            "PROJECT_NAME": "<your-project-name>", # Unique identifier for project
+            "REQUIREMENTS_PATH": "requirements/requirements.txt", # Path to pip requirements, relative to project
+            "GUNICORN_PORT": 8001, # Port gunicorn will listen on
+            "LOCALE": "en_US.UTF-8", # Should end with ".UTF-8"
+            "REPO_URL": "<your-repository>", # Git or Mercurial remote repo URL for the project
+            "LINUX_DISTRO": "squeeze", # Debian 6
+        }
+
+        ...
+
+
+Release Notes
+-------------
+
+## Tested Environments
 
 I tested the script with the following configurations:
 
 * Debian 6 and Postgresql 9.2
 * Debian 6 and Postgresql 8.4 (deprecated)
 
-### Known Issues
+## Known Issues
 
 * Each project must have its own database servers. Archiving, restoring, and Streaming Replication are tightly coupled
   to the database server.

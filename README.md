@@ -10,13 +10,13 @@ These features allow the script to deploy an *application* and *database* server
 
 Setup for:
 
-* Production server setup
+* Topologies
   * Single application/cron/database server
   * Multiple independent application servers
   * Multiple independent cron servers (cron servers are identical to application servers with cron processes enabled)
   * Master and slave Postgres server with Streaming Replication
-* Development server setup
-  * Vagrant local setup
+* Different targets aptly named *development*, *staging*, *production*, and *vagrant*.
+* Vagrant+Pycharm support -- doesn't run nginx, cron, or gunicorn
 
 Out of the box features:
 
@@ -24,7 +24,7 @@ Out of the box features:
 * Celery support
 * Copy your SSH public key to the server
 * Copy your repository's private key to the server
-* Copy database public/private keys on every database server
+* Copy database public/private keys on each database peer
 
 ### Requirements
 
@@ -32,6 +32,8 @@ These requirements should be listed in your `pip` requirements file:
 
 * Django 1.5 or higher
 * Mezzanine 1.4.3 or higher
+* `fabric`
+* `simplejson`
 * django-celery (optional)
 
 ### Usage Scenario
@@ -44,7 +46,26 @@ These requirements should be listed in your `pip` requirements file:
 
 4. Your `settings.py` file has to be configured properly. See next section for details.
 
-5. If this is a first time installation: (a) replace Mezzanine's fabric script with the one in this repository; (b) create `deploy/development_settings.py`, `deploy/production_settings.py`, `deploy/staging_settings.py`, and/or `deploy/vagrant_settings.py`; and (c) add `deploy/celeryd.conf`. Then you set up your server with `fab all`.
+5. If this is a first time installation: (a) replace Mezzanine's fabric script with the one in this repository; (b) create `deploy/development_settings.py`, `deploy/production_settings.py`, `deploy/staging_settings.py`, and/or `deploy/vagrant_settings.py`; and (c) add `deploy/celeryd.conf`. The contents of these files are presented below.
+
+Your directory structure should look like:
+
+* deploy
+  * celeryd.conf
+  * crontab
+  * development_settings.py
+  * gunicorn.conf.py
+  * nginx.conf
+  * production_settings.py
+  * staging_settings.py
+  * supervisor.conf
+  * vagrant_settings.py
+* fabfile.py
+* manage.py
+* local_settings.py
+* settings.py
+* urls.py
+* ...
 
 6. If you make major configuration changes, you should run `fab create:True deploy`.
 
@@ -74,7 +95,7 @@ In your `settings.py` file:
                  "PRIVATE_CRON_HOSTS": [], # Optional list of private IP addresses for CRON_HOSTS to communicate with the database, default is the same as PRIVATE_APPLICATION_HOSTS
                  "VIRTUALENV_HOME":  "", # Absolute remote path for virtualenvs
                  "PROJECT_NAME": "", # Unique identifier for project
-                 "REQUIREMENTS_PATH": "", # Path to pip requirements, relative to project
+                 "REQUIREMENTS_PATH": "requirements/requirements.txt", # Path to pip requirements, relative to project
                  "APT_REQUIREMENTS": ["",""], # Optional list of Debian apt-get packages that are prerequisities for pip packages
                  "GUNICORN_PORT": 8000, # Port gunicorn will listen on
                  "LOCALE": "en_US.UTF-8", # Should end with ".UTF-8"
@@ -238,9 +259,9 @@ If you are running the working (non-committed) version of Django from `/vagrant/
                 "SSH_KEY_PATH":  "", # Local path to SSH key file, for key-based auth
 
                 # deployment SSH key
-                #"DEPLOY_MY_PUBLIC_KEY": "~/.ssh/id_rsa.pub",
-                "DEPLOY_SSH_KEY_PATH": "<local-file.pub>",
-                #"DEPLOY_DB_CLUSTER_SSH_KEY_PATH": "<local-file.pem>",
+                #"DEPLOY_MY_PUBLIC_KEY": "~/.ssh/id_rsa.pub", # not needed because we are authenticating with username & password
+                "DEPLOY_SSH_KEY_PATH": "", # local-file.pub
+                #"DEPLOY_DB_CLUSTER_SSH_KEY_PATH": "", # local-file.pem, but not needed for Vagrant
 
                 # Vagrant local box
                 "APPLICATION_HOSTS": ['127.0.0.1:2222'], # SSH port for Vagrant is 2222
@@ -252,13 +273,13 @@ If you are running the working (non-committed) version of Django from `/vagrant/
                 "ADMIN_PASS": "vagrant", # Live admin user password
 
                 # application settings
-                "SITENAME": "<your-sitename>",
+                "SITENAME": "Default", # your sitename goes here
                 "VIRTUALENV_HOME":  "/home/vagrant", # Absolute remote path for virtualenvs
-                "PROJECT_NAME": "<your-project-name>", # Unique identifier for project
+                "PROJECT_NAME": "", # Unique identifier for project
                 "REQUIREMENTS_PATH": "requirements/requirements.txt", # Path to pip requirements, relative to project
                 "GUNICORN_PORT": 8001, # Port gunicorn will listen on
                 "LOCALE": "en_US.UTF-8", # Should end with ".UTF-8"
-                "REPO_URL": "<your-repository>", # Git or Mercurial remote repo URL for the project
+                "REPO_URL": "", # Git or Mercurial remote repo URL for the project
                 "LINUX_DISTRO": "squeeze", # Debian 6
             },
             ... other deployment settings ...
@@ -325,7 +346,11 @@ I tested the script with the following configurations:
 * Debian 6 and Postgresql 9.2
 * Debian 6 and Postgresql 8.4 (deprecated)
 
-### Known Issues
+### Configuration Issues
+
+* Some fabric settings are duplicated but needn't.
+
+### Server Issues
 
 * Each project must have its own database servers. Archiving, restoring, and *Streaming Replication* are tightly coupled
   to the database server.

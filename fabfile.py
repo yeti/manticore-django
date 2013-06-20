@@ -150,7 +150,7 @@ templates = {
         "remote_path": "%(proj_path)s/gunicorn.conf.py",
     },
     "settings": {
-        "local_path": "deploy/live_settings.py", # local task changes this filename
+        "local_path": "deploy/%(mode)s_settings.py", # local task changes this filename
         "remote_path": "%(proj_path)s/local_settings.py",
     },
     "celery": {
@@ -1467,11 +1467,10 @@ def vagrant(show_info=False):
     del templates["nginx"]
     del templates["cron"]
     del templates["gunicorn"]
-    templates["settings"]["local_path"] = "deploy/vagrant_settings.py"
 
     if env.venv_home.startswith("/vagrant/"):
         abort("NEVER specify your virtual environment home as the shared directory between host and vm\n"
-              "You must reconfigure VIRTUALENV_HOME in your settings.py/local_settings.py")
+              "You must reconfigure VIRTUALENV_HOME in your settings.py/%s_settings.py" % env.mode)
 
 @task
 @log_call

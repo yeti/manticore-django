@@ -44,7 +44,7 @@ These requirements should be listed in your `pip` requirements file:
 
 4. Your `settings.py` file has to be configured properly. See next section for details.
 
-5. If this is a first time installation, then (a) replace Mezzanine's fabric script with the one in this repository, (b) modify `deploy/live_settings.py`, and (c) add `deploy/celeryd.conf`. Then you set up your server with `fab all`.
+5. If this is a first time installation: (a) replace Mezzanine's fabric script with the one in this repository; (b) create `deploy/development_settings.py`, `deploy/production_settings.py`, `deploy/staging_settings.py`, and/or `deploy/vagrant_settings.py`; and (c) add `deploy/celeryd.conf`. Then you set up your server with `fab all`.
 
 6. If you make major configuration changes, you should run `fab create:True deploy`.
 
@@ -97,9 +97,9 @@ In your `settings.py` file:
         }
 
 
-### deploy/live_settings.py
+### `deploy/development_settings.py`, `deploy/staging_settings.py`, and `deploy/production_settings.py`
 
-Add/replace the following lines to Mezzanine's `deploy/live_settings.py`:
+Create server-specific settings for each of the specified targets `deploy/development_settings.py`, `deploy/staging_settings.py`, and `deploy/production_settings.py`:
 
         DATABASES = {
             "default": {
@@ -118,18 +118,34 @@ Add/replace the following lines to Mezzanine's `deploy/live_settings.py`:
             }
         }
 
-        # Django filtering
+        # Mezzanine settings
+        SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTOCOL", "https")
+
+        CACHE_MIDDLEWARE_SECONDS = 60
+
+        CACHE_MIDDLEWARE_KEY_PREFIX = "%(proj_name)s"
+
+        CACHES = {
+            "default": {
+                "BACKEND": "django.core.cache.backends.memcached.MemcachedCache",
+                "LOCATION": "127.0.0.1:11211",
+            }
+        }
+
+        SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+
+        # Django 1.5+ requires a set of allowed hosts
         ALLOWED_HOSTS = [%(allowed_hosts)s]
 
-        # Celery configuration
+        # Celery configuration (if django-celery is installed in requirements/requirements.txt)
         BROKER_URL = 'amqp://%(proj_name)s:%(admin_pass)s@127.0.0.1:5672/%(proj_name)s'
 
         # ...
 
 ### deploy/celeryd.conf
 
-Add this file to your deploy directory along with `crontab`, `gunicorn.conf.py`, `live_settings.py`, `nginx.conf`, and
-`supervisorconf`.
+Add this file to your deploy directory along with `crontab`, `gunicorn.conf.py`, `nginx.conf`, and
+`supervisor.conf`.
 
         ; ==============================================
         ;  celery worker supervisor example for Django
@@ -211,7 +227,7 @@ Steps:
 
 ### local_settings.py
 
-Example Fabric configuration in `local_settings.py`:
+If you are running the working (non-committed) version of Django from `/vagrant/`, then you'll have to configure `local_settings.py`:
 
         ...
 
@@ -248,13 +264,9 @@ Example Fabric configuration in `local_settings.py`:
             ... other deployment settings ...
         }
 
-
 ### deploy/vagrant_settings.py
 
-This is a copy of local_settings.py that will be pushed to the server when `fab vagrant` is called. Place
-*development* settings into this file, for example:
-
-        ...
+This is a copy of `local_settings.py` that will be pushed to the server when `fab vagrant up` is called. The configuration for this
 
         DATABASES = {
             "default": {
@@ -273,20 +285,33 @@ This is a copy of local_settings.py that will be pushed to the server when `fab 
             }
         }
 
-        ALLOWED_HOSTS = [%(allowed_hosts)s]
+        # Mezzanine settings
+        SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTOCOL", "https")
 
-        # Celery configuration
-        BROKER_URL = 'amqp://%(proj_name)s:%(admin_pass)s@127.0.0.1:5672/%(proj_name)s'
+        CACHE_MIDDLEWARE_SECONDS = 60
 
-        RAVEN_CONFIG = {}
+        CACHE_MIDDLEWARE_KEY_PREFIX = "%(proj_name)s"
 
+        # Caches are disabled for vagrant.
         CACHES = {
             'default': {
                 'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
             }
         }
 
+        # Since Vagrant is running on your computer, you can turn on debugging.
         DEBUG = True
+
+        SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+
+        # Django 1.5+ requires a set of allowed hosts
+        ALLOWED_HOSTS = [%(allowed_hosts)s]
+
+        # Celery configuration (if django-celery is installed in requirements/requirements.txt)
+        BROKER_URL = 'amqp://%(proj_name)s:%(admin_pass)s@127.0.0.1:5672/%(proj_name)s'
+
+        # We don't need to report any crashes to an outside server.
+        RAVEN_CONFIG = {}
 
         ...
 
@@ -302,7 +327,7 @@ I tested the script with the following configurations:
 
 ### Known Issues
 
-* Each project must have its own database servers. Archiving, restoring, and Streaming Replication are tightly coupled
+* Each project must have its own database servers. Archiving, restoring, and *Streaming Replication* are tightly coupled
   to the database server.
 
 * If the script fails in `fab all` because your project database already exists (i.e., an upgrade), you can
@@ -310,7 +335,7 @@ I tested the script with the following configurations:
 
 * Automatic failover is not implemented. If the master database fails, manually configure a slave database as the master.
 
-* If a host is removed from APPLICATION_HOSTS, CRON_HOSTS, or DATABASE_HOSTS, you have to manually remove that
+* If a host is removed from `APPLICATION_HOSTS`, `CRON_HOSTS`, or `DATABASE_HOSTS`, you have to manually remove that
   host entry from the Postgresql database configuration files.
 
 ### Vagrant Issues

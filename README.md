@@ -376,3 +376,5 @@ I tested the script with the following configurations:
 * *NEVER* specify `VIRTUALENV_HOME` as the vagrant directory because it *will erase your local project*.
 
 * Database changes aren't persisted when a Vagrant instance is destroyed.
+
+* When running the script with vagrant, the following error might be shown: `Host key for server 127.0.0.1 does not match!`. The reason is another vagrant instance that you previously created. Remove the entry 127.0.0.1 from `~/.ssh/known_hosts` to fix.

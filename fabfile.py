@@ -1464,9 +1464,14 @@ def vagrant(show_info=False):
     env.mode = "vagrant"
     load_environment(env.settings[env.mode], show_info)
 
-    del templates["nginx"]
-    del templates["cron"]
-    del templates["gunicorn"]
+    if "nginx" in templates:
+        del templates["nginx"]
+
+    if "cron" in templates:
+        del templates["cron"]
+
+    if "gunicorn" in templates:
+        del templates["gunicorn"]
 
     if env.venv_home.startswith("/vagrant/"):
         abort("NEVER specify your virtual environment home as the shared directory between host and vm\n"

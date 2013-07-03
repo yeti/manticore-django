@@ -34,7 +34,7 @@ def new(project_name='', app_name='', db_password='', repo_url=''):
         if answer.lower() != 'yes':
             return
     else:
-        local("vagrant init debian-squeeze %s/Squeeze64_VirtualBox4.2.4.box" % os.path.dirname(os.path.realpath(__file__)))
+        local("vagrant init debian-squeeze http://dl.dropbox.com/u/54390273/vagrantboxes/Squeeze64_VirtualBox4.2.4.box")
         local("sed 's/# config.vm.network :forwarded_port, guest: 80, host: 8080/config.vm.network :forwarded_port, guest: 8000, host: 8000/g' Vagrantfile > Vagrantfile.tmp")
         local("mv Vagrantfile.tmp Vagrantfile")
 

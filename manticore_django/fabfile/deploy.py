@@ -18,12 +18,15 @@ from fabric.colors import yellow, green, blue, red
 from fabric.utils import *
 import simplejson
 from fabric.operations import prompt
+from utils import log_call, pip, virtualenv, print_command, sudo, project
 
 ################
 # Config setup #
 ################
 
 # removes the port
+
+
 def get_host(host_name):
     if host_name.find(":") != -1:
         return host_name[0:host_name.find(":")]
@@ -97,7 +100,6 @@ def load_environment(conf, show_info):
     env.apt_requirements = conf.get("APT_REQUIREMENTS", [])
 
 
-
 if sys.argv[0].split(os.sep)[-1] in ("fab",             # POSIX
                                      "fab-script.py"):  # Windows
     # Ensure we import settings from the current dir
@@ -112,8 +114,10 @@ if sys.argv[0].split(os.sep)[-1] in ("fab",             # POSIX
         except (KeyError, ValueError):
             raise ImportError
     except (ImportError, AttributeError):
-        print "Aborting, no hosts defined."
-        exit()
+        response = prompt("Warning, no hosts defined: Are you sure you want to continue? (yes/no)")
+        if response.lower() != "yes":
+            print "\nAborting!"
+            exit()
 
 
 
@@ -443,25 +447,6 @@ def check_requirements_file(module):
 # Context for virtualenv and project #
 ######################################
 
-@contextmanager
-def virtualenv():
-    """
-    Runs commands within the project's virtualenv.
-    """
-    with cd(env.venv_path):
-        with prefix("source %s/bin/activate" % env.venv_path):
-            yield
-
-
-@contextmanager
-def project():
-    """
-    Runs commands within the project's directory.
-    """
-    with virtualenv():
-        with cd(env.proj_dirname):
-            yield
-
 
 @contextmanager
 def update_changed_requirements():
@@ -502,12 +487,6 @@ def _print(output):
     print
 
 
-def print_command(command):
-    _print(blue("$ ", bold=True) +
-           yellow(command, bold=True) +
-           red(" ->", bold=True))
-
-
 @task
 @roles('application','cron','database','db_slave')
 def run(command, show=True):
@@ -518,27 +497,6 @@ def run(command, show=True):
         print_command(command)
     with hide("running"):
         return _run(command)
-
-
-@task
-@roles('application','cron','database','db_slave')
-def sudo(command, show=True):
-    """
-    Runs a command as sudo.
-    """
-    if show:
-        print_command(command)
-    with hide("running"):
-        return _sudo(command)
-
-
-def log_call(func):
-    @wraps(func)
-    def logged(*args, **kawrgs):
-        header = "-" * len(func.__name__)
-        _print(green("\n".join([header, func.__name__, header]), bold=True))
-        return func(*args, **kawrgs)
-    return logged
 
 
 def get_templates():
@@ -572,6 +530,7 @@ def upload_template_and_reload(name):
     if exists(remote_path):
         with hide("stdout"):
             remote_data = sudo("cat %s" % remote_path, show=False)
+    print "local_path: %s " % local_path
     with open(local_path, "r") as f:
         local_data = f.read()
         # Escape all non-string-formatting-placeholder occurrences of '%':
@@ -607,16 +566,6 @@ def apt(packages):
     Installs one or more system packages via apt.
     """
     return sudo("apt-get install -y -q " + packages)
-
-
-@task
-@roles('application','cron')
-def pip(packages):
-    """
-    Installs one or more Python packages within the virtual environment.
-    """
-    with virtualenv():
-        return sudo("pip install %s" % packages)
 
 
 def postgres(command):

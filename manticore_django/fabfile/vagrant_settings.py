@@ -37,7 +37,7 @@ DEBUG = True
 # SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 
 # Django 1.5+ requires a set of allowed hosts
-# ALLOWED_HOSTS = [%(allowed_hosts)s]
+ALLOWED_HOSTS = ["127.0.0.1", "0.0.0.0"]
 
 # Celery configuration (if django-celery is installed in requirements/requirements.txt)
 BROKER_URL = 'amqp://%(proj_name)s:%(admin_pass)s@127.0.0.1:5672/%(proj_name)s'

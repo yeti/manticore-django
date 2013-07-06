@@ -1,5 +1,3 @@
-__author__ = 'rudy'
-
 FABRIC = {
     "vagrant": {
         "SSH_USER": "vagrant", # SSH username
@@ -23,6 +21,7 @@ FABRIC = {
         "SITENAME": "Default",
         "VIRTUALENV_HOME":  "/home/vagrant", # Absolute remote path for virtualenvs
         "PROJECT_NAME": "", # Unique identifier for project
+        "PROJECT_PATH": "",
         "REQUIREMENTS_PATH": "requirements/requirements.txt", # Path to pip requirements, relative to project
         "GUNICORN_PORT": 8001, # Port gunicorn will listen on
         "LOCALE": "en_US.UTF-8", # Should end with ".UTF-8"
@@ -55,6 +54,5 @@ FABRIC = {
         "LOCALE": "en_US.UTF-8", # Should end with ".UTF-8"
         "REPO_URL": "", # Git or Mercurial remote repo URL for the project
         "LINUX_DISTRO": "squeeze",
-
     }
 }

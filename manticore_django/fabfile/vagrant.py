@@ -1,6 +1,6 @@
 from genericpath import exists
-import getpass
 from fabric.context_managers import cd, settings
+from fabric.contrib.files import sed, _expand_path
 from fabric.state import env
 from fabric.decorators import task, roles
 from fabric.operations import local, os, prompt, get, put
@@ -46,7 +46,6 @@ def new(project_name='', app_name='', db_password='', repo_url=''):
     vagrant()
 
     # Set appropriate settings from inputs
-    env.venv_home += "/%s" % project_name
     env.proj_path = "/vagrant/%s" % project_name
     env.proj_name = project_name
     env.venv_path = "%s/%s" % (env.venv_home, env.proj_name)
@@ -67,40 +66,16 @@ def new(project_name='', app_name='', db_password='', repo_url=''):
     execute(create_virtualenv)
     execute(create_project)
 
-    # Remove temp settings and change local working path permanently into project folder
+    # Remove temp settings and change local working path permanently into project folder so we can copy deploy templates
     local("rm settings.py settings.pyc")
     os.chdir(env.proj_name)
-
-    #TODO: Add Fabric from fabric_settings.py to settings.py
-
-    #TODO: Needs to be moved to a task with @roles('application') after fabric_settings.py has been added to settings.py
-    # with project():
-    #     sudo("sed 's/\"DB_PASS\": \"vagrant\"/\"DB_PASS\": \"%s\"/g' local_settings.py > local_settings.py.tmp" % env.db_pass)
-    #     sudo("mv local_settings.py.tmp local_settings.py")
-    #
-    #     sudo("sed 's/\"DB_PASS\": \"\"/\"DB_PASS\": \"%s\"/g' local_settings.py > local_settings.py.tmp" % env.db_pass)
-    #     sudo("mv local_settings.py.tmp local_settings.py")
-    #
-    #     sudo("sed 's/\"PROJECT_NAME\": \"\"/\"PROJECT_NAME\": \"%s\"/g' local_settings.py > local_settings.py.tmp" % env.proj_name)
-    #     sudo("mv local_settings.py.tmp local_settings.py")
-    #
-    #     sudo("sed 's/\"REPO_URL\": \"\"/\"REPO_URL\": \"%s\"/g' local_settings.py > local_settings.py.tmp" % env.repo_url)
-    #     sudo("mv local_settings.py.tmp local_settings.py")
-
-    #TODO: Add ALLOWED_HOSTS to settings.py
-
-    # Write extra settings to settings.py
-    # with open("settings.py", "a") as settings_file:
-    #     settings_file.write("\n")
-    #     settings_file.write('ALLOWED_HOSTS = ["127.0.0.1"]')
-    #     settings_file.writer("\n")
 
     # Finish setting up the database and copy over appropriate templates
     createdb(True)
     execute(createapp2)
+    execute(create_rabbit, True)
     execute(init_db)
     execute(init_git)
-    execute(create_rabbit, True)
 
 
 @roles('application')
@@ -126,22 +101,6 @@ def create_project():
             sudo("mezzanine-project %s" % env.proj_name)
 
     with project():
-        # Postgres default username is the login username
-        sudo("sed 's/backends.sqlite3/backends.postgresql_psycopg2/g' local_settings.py > local_settings.py.tmp")
-        sudo("mv local_settings.py.tmp local_settings.py")
-        sudo("sed 's/\"USER\": \"\"/\"USER\": \"%s\"/g' local_settings.py > local_settings.py.tmp" % getpass.getuser())
-        sudo("mv local_settings.py.tmp local_settings.py")
-
-        sudo("sed 's/dev.db/%s/g' local_settings.py > local_settings.py.tmp" % env.proj_name)
-        sudo("mv local_settings.py.tmp local_settings.py")
-        sudo("echo 'MEDIA_URL = \"http://127.0.0.1:8000/static/media/\"' >> local_settings.py")
-        sudo("cp local_settings.py local_settings.py.template")
-
-        # modify the password after creating the template file, we don't check in the password as the template (each user has different settings)
-        sudo("sed 's/\"PASSWORD\": \"\"/\"PASSWORD\": \""+ env.db_pass + "\"/g' local_settings.py > local_settings.py.tmp")
-        sudo("mv local_settings.py.tmp local_settings.py")
-
-        sudo("chmod +x manage.py")
         sudo("pip freeze > requirements/requirements.txt")
 
         sudo("%s startapp %s" % (env.manage, env.app_name))
@@ -150,6 +109,25 @@ def create_project():
         Helper().add_line_to_list("remote_settings.py", "settings.py.tmp", "INSTALLED_APPS = (", '    "%s",' % env.app_name)
         put("settings.py.tmp", "settings.py", use_sudo=True)
         put("%s/vagrant_settings.py" % os.path.dirname(os.path.realpath(__file__)), "deploy/vagrant_settings.py", use_sudo=True)
+
+        # Add the appropriate fabric settings for local and development deployment
+        with open("%s/fabric_settings.py" % os.path.dirname(os.path.realpath(__file__))) as f:
+            file_path = _expand_path("settings.py")
+            sudo("echo '%s' >> %s" % ("", file_path))
+            for line in f:
+                sudo("echo '%s' >> %s" % (line.rstrip('\n').replace("'", r"'\\''"), file_path))
+
+        # Set fabric settings according to user's input
+        sed("settings.py", "\"DB_PASS\": \"vagrant\"", "\"DB_PASS\": \"%s\"" % env.db_pass, use_sudo=True, backup="", shell=True)
+        sed("settings.py", "\"DB_PASS\": \"\"", "\"DB_PASS\": \"%s\"" % env.db_pass, use_sudo=True, backup="", shell=True)
+        sed("settings.py", "\"PROJECT_NAME\": \"\"", "\"PROJECT_NAME\": \"%s\"" % env.proj_name, use_sudo=True, backup="", shell=True)
+        sed("settings.py", "\"REPO_URL\": \"\"", "\"REPO_URL\": \"%s\"" % env.repo_url, use_sudo=True, backup="", shell=True)
+        sed("settings.py", "\"PROJECT_PATH\": \"\"", "\"PROJECT_PATH\": \"%s\"" % env.proj_path, use_sudo=True, backup="", shell=True)
+
+        # We will be using the manticore fabfile not Mezzanine's
+        sudo("rm fabfile.py")
+
+        #TODO: Install and Link manticore-django fabfile package?
 
     local("rm settings.py.tmp remote_settings.py")
 

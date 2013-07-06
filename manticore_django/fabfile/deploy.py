@@ -82,7 +82,7 @@ def load_environment(conf, show_info):
     env.venv_home = conf.get("VIRTUALENV_HOME", "/home/%s" % env.user)
     env.venv_path = "%s/%s" % (env.venv_home, env.proj_name)
     env.proj_dirname = "project"
-    env.proj_path = "%s/%s" % (env.venv_path, env.proj_dirname)
+    env.proj_path = conf.get("PROJECT_PATH", "%s/%s" % (env.venv_path, env.proj_dirname))
     env.manage = "%s/bin/python %s/project/manage.py" % (env.venv_path,
                                                          env.venv_path)
     env.live_host = conf.get("LIVE_HOSTNAME", get_host(conf.get("APPLICATION_HOSTS")[0]) if conf.get("APPLICATION_HOSTS") else None)

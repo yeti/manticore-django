@@ -13,6 +13,7 @@ import traceback
 from time import time, sleep
 from fabric.context_managers import settings
 from fabric.api import env, cd, prefix, sudo as _sudo, run as _run, hide, task, get, puts, put, roles, execute, parallel
+from fabric.contrib.console import confirm
 from fabric.contrib.files import exists, upload_template, _escape_for_regex, append
 from fabric.colors import yellow, green, blue, red
 from fabric.utils import *
@@ -114,8 +115,7 @@ if sys.argv[0].split(os.sep)[-1] in ("fab",             # POSIX
         except (KeyError, ValueError):
             raise ImportError
     except (ImportError, AttributeError):
-        response = prompt("Warning, no hosts defined: Are you sure you want to continue? (yes/no)")
-        if response.lower() != "yes":
+        if not confirm("Warning, no hosts defined: Are you sure you want to continue?"):
             print "\nAborting!"
             exit()
 

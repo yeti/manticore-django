@@ -1,9 +1,10 @@
 from genericpath import exists
 from fabric.context_managers import cd, settings
+from fabric.contrib.console import confirm
 from fabric.contrib.files import sed, _expand_path
 from fabric.state import env
 from fabric.decorators import task, roles
-from fabric.operations import local, os, prompt, get, put
+from fabric.operations import local, os, get, put
 from fabric.tasks import execute
 from utils import log_call, pip, project, activate_venv
 from deploy import vagrant, install_prereq, installdb, fix_db_permissions, installapp, copy_db_ssh_keys, create_prereq, removeapp, run, sudo, manage, create_rabbit, createdb, createapp2
@@ -23,15 +24,12 @@ def new(project_name='', app_name='', db_password='', repo_url=''):
         return
 
     # ensure that project_name and app_name are different
-    if project_name == app_name:
-        question = prompt("Your app_name is the same as the project_name. They should be different. Continue? (Y/[N])?",validate="^[YyNn]?$")
-        if not (question == 'y' or question == 'Y'):
-            return
+    if project_name == app_name and not confirm("Your app_name is the same as the project_name. They should be different. Continue?"):
+        return
 
     # If a Vagrantfile exists this means a set up was already tried
     if exists("Vagrantfile"):
-        answer = prompt("Vagrant file already exists, continue anyways? (yes/no)")
-        if answer.lower() != 'yes':
+        if not confirm("Vagrant file already exists, continue anyways?"):
             return
     else:
         local("vagrant init debian-squeeze http://dl.dropbox.com/u/54390273/vagrantboxes/Squeeze64_VirtualBox4.2.4.box")
@@ -82,9 +80,7 @@ def new(project_name='', app_name='', db_password='', repo_url=''):
 def create_virtualenv():
     with cd(env.venv_home):
         if exists(env.proj_name):
-            prompt = raw_input("\nVirtualenv exists: %s\nWould you like "
-                               "to replace it? (yes/no) " % env.proj_name)
-            if prompt.lower() != "yes":
+            if not confirm("Virtualenv exists: %s\n Do you want to replace it?" % env.proj_name):
                 print "\nAborting!"
                 return False
             removeapp()

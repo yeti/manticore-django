@@ -1,25 +1,22 @@
 import os
 import re
 import sys
-from functools import wraps
 from getpass import getpass, getuser
 from glob import glob
 from contextlib import contextmanager
 from posixpath import join
-import hashlib
 import tempfile
 from StringIO import StringIO
 import traceback
-from time import time, sleep
+from time import sleep
 from fabric.context_managers import settings
-from fabric.api import env, cd, prefix, sudo as _sudo, run as _run, hide, task, get, puts, put, roles, execute, parallel
+from fabric.api import env, cd, run as _run, hide, task, get, puts, put, roles, execute, parallel
 from fabric.contrib.console import confirm
 from fabric.contrib.files import exists, upload_template, _escape_for_regex, append
-from fabric.colors import yellow, green, blue, red
+from fabric.colors import red
 from fabric.utils import *
 import simplejson
-from fabric.operations import prompt
-from utils import log_call, pip, virtualenv, print_command, sudo, project
+from utils import log_call, pip, print_command, sudo, project
 
 ################
 # Config setup #
@@ -78,7 +75,6 @@ def load_environment(conf, show_info):
     assert len(env.private_application_hosts) == len(env.application_hosts), "Same number of APPLICATION_HOSTS and PRIVATE_APPLICATION_HOSTS must be listed"
     assert len(env.private_cron_hosts) == len(env.cron_hosts), "Same number of CRON_HOSTS and PRIVATE_CRON_HOSTS must be listed"
 
-
     env.proj_name = conf.get("PROJECT_NAME", os.getcwd().split(os.sep)[-1])
     env.venv_home = conf.get("VIRTUALENV_HOME", "/home/%s" % env.user)
     env.venv_path = "%s/%s" % (env.venv_home, env.proj_name)
@@ -106,7 +102,7 @@ if sys.argv[0].split(os.sep)[-1] in ("fab",             # POSIX
     # Ensure we import settings from the current dir
     try:
         global_conf = {}
-        global_conf = __import__("settings", globals(), locals(), [], 0).FABRIC
+        global_conf = __import__("fabric_settings", globals(), locals(), [], 0).FABRIC
         try:
             env.settings = global_conf # save settings to switch later
             env.mode = "development"
@@ -118,7 +114,6 @@ if sys.argv[0].split(os.sep)[-1] in ("fab",             # POSIX
         if not confirm("Warning, no hosts defined: Are you sure you want to continue?"):
             print "\nAborting!"
             exit()
-
 
 
 ##################
@@ -729,7 +724,7 @@ def installapp():
     apt("nginx libjpeg-dev python-dev python-setuptools "
         "memcached libffi-dev rabbitmq-server")
     sudo("easy_install pip")
-    sudo("pip install virtualenv mercurial")
+    sudo("pip install virtualenv")
     apt(" ".join(env.apt_requirements))
 
 @task
@@ -1403,6 +1398,7 @@ def locales():
 def fix_db_permissions():
     sudo("chmod o+r /etc/postgresql/9.2/main/pg_hba.conf")
 
+
 @task
 @log_call
 def vagrant(show_info=False):
@@ -1412,6 +1408,7 @@ def vagrant(show_info=False):
 
     env.mode = "vagrant"
     load_environment(env.settings[env.mode], show_info)
+    env.manage = "%s/bin/python /vagrant/%s/manage.py" % (env.venv_path, env.proj_name)
 
     if "nginx" in templates:
         del templates["nginx"]
@@ -1447,6 +1444,7 @@ def up(warn_on_duplicate_accounts=True):
         warn_on_duplicate_accounts = False
 
     vagrant()
+    env.manage = "%s/bin/python /vagrant/%s/manage.py" % (env.venv_path, env.proj_name)
 
     execute(locales)
     copysshkeys()

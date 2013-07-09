@@ -1,4 +1,5 @@
 from genericpath import exists
+from importlib import import_module
 from fabric.context_managers import cd, settings
 from fabric.contrib.console import confirm
 from fabric.contrib.files import sed, _expand_path
@@ -7,7 +8,7 @@ from fabric.decorators import task, roles
 from fabric.operations import local, os, get, put
 from fabric.tasks import execute
 from utils import log_call, pip, project, activate_venv
-from deploy import vagrant, install_prereq, installdb, fix_db_permissions, installapp, copy_db_ssh_keys, create_prereq, removeapp, run, sudo, manage, create_rabbit, createdb, createapp2
+from deploy import vagrant, install_prereq, installdb, fix_db_permissions, installapp, copy_db_ssh_keys, create_prereq, removeapp, run, sudo, manage, create_rabbit, createdb, createapp2, up
 
 __author__ = 'rudy'
 
@@ -27,20 +28,12 @@ def new(project_name='', app_name='', db_password='', repo_url=''):
     if project_name == app_name and not confirm("Your app_name is the same as the project_name. They should be different. Continue?"):
         return
 
-    # If a Vagrantfile exists this means a set up was already tried
-    if exists("Vagrantfile"):
-        if not confirm("Vagrant file already exists, continue anyways?"):
-            return
-    else:
-        local("vagrant init debian-squeeze http://dl.dropbox.com/u/54390273/vagrantboxes/Squeeze64_VirtualBox4.2.4.box")
-        local("sed 's/# config.vm.network :forwarded_port, guest: 80, host: 8080/config.vm.network :forwarded_port, guest: 8000, host: 8000/g' Vagrantfile > Vagrantfile.tmp")
-        local("mv Vagrantfile.tmp Vagrantfile")
-
-    local("vagrant up")
+    if not create_vagrantfile():
+        return False
 
     # Create a fake settings file for access to vagrant
-    local("cp %s/fabric_settings.py settings.py" % os.path.dirname(os.path.realpath(__file__)))
-    env.settings = __import__("settings", globals(), locals(), [], 0).FABRIC
+    local("cp %s/fabric_settings.py fabric_settings.py" % os.path.dirname(os.path.realpath(__file__)))
+    env.settings = __import__("fabric_settings", globals(), locals(), [], 0).FABRIC
     vagrant()
 
     # Set appropriate settings from inputs
@@ -65,7 +58,7 @@ def new(project_name='', app_name='', db_password='', repo_url=''):
     execute(create_project)
 
     # Remove temp settings and change local working path permanently into project folder so we can copy deploy templates
-    local("rm settings.py settings.pyc")
+    local("rm fabric_settings.py fabric_settings.pyc")
     os.chdir(env.proj_name)
 
     # Finish setting up the database and copy over appropriate templates
@@ -74,6 +67,65 @@ def new(project_name='', app_name='', db_password='', repo_url=''):
     execute(create_rabbit, True)
     execute(init_db)
     execute(init_git)
+
+
+# Assumes you're running this in your new project's folder already
+@task
+@log_call
+def clone(repo_url=''):
+    if len(repo_url) == 0:
+        print "Usage: fab new:<repo_url>"
+        return
+
+    if not create_vagrantfile():
+        return False
+
+    # We'll create a temporary copy to get the appropriate settings for deployment
+    if exists("temp"):
+        if not confirm("This project already exists, continue anyways?"):
+            return False
+    else:
+        local("mkdir temp")
+        local("git clone %s temp/." % repo_url)
+
+    #TODO: We still won't have any vagrant_settings.py or FABRIC in settings.py after we deploy and delete temp
+    # Check to see if this project is ready for vagrant deployment - if not we'll 'upgrade' it
+    if not exists("temp/deploy/vagrant_settings.py"):
+        local("cp %s/vagrant_settings.py temp/deploy/vagrant_settings.py" % os.path.dirname(os.path.realpath(__file__)))
+
+    #TODO: Auto add fabric_settings.py if it doesn't exist
+    fabric_settings = import_module("temp.fabric_settings", "temp")
+
+    #TODO: Auto add vagrant to fabric_settings.py if it doesn't exist
+    env.settings = fabric_settings.FABRIC
+    if 'vagrant' not in env.settings:
+        print 'Please set up "vagrant" mode in fabric_settings.py and rerun this command'
+        return False
+
+    os.chdir("temp")
+
+    # And we're ready to go
+    up()
+
+    # Now clean up temporary copy
+    os.chdir("..")
+    local("rm -rf temp")
+
+
+@task
+@log_call
+def create_vagrantfile():
+    # If a Vagrantfile exists this means a set up was already tried
+    if exists("Vagrantfile"):
+        if not confirm("Vagrant file already exists, continue anyways?"):
+            return False
+    else:
+        local("vagrant init debian-squeeze http://dl.dropbox.com/u/54390273/vagrantboxes/Squeeze64_VirtualBox4.2.4.box")
+        local("sed 's/# config.vm.network :forwarded_port, guest: 80, host: 8080/config.vm.network :forwarded_port, guest: 8000, host: 8000/g' Vagrantfile > Vagrantfile.tmp")
+        local("mv Vagrantfile.tmp Vagrantfile")
+
+    local("vagrant up")
+    return True
 
 
 @roles('application')
@@ -107,18 +159,19 @@ def create_project():
         put("%s/vagrant_settings.py" % os.path.dirname(os.path.realpath(__file__)), "deploy/vagrant_settings.py", use_sudo=True)
 
         # Add the appropriate fabric settings for local and development deployment
-        with open("%s/fabric_settings.py" % os.path.dirname(os.path.realpath(__file__))) as f:
+        put("fabric_settings.py", "fabric_settings.py", use_sudo=True)
+        with open("%s/fabric_import.py" % os.path.dirname(os.path.realpath(__file__))) as f:
             file_path = _expand_path("settings.py")
             sudo("echo '%s' >> %s" % ("", file_path))
             for line in f:
                 sudo("echo '%s' >> %s" % (line.rstrip('\n').replace("'", r"'\\''"), file_path))
 
         # Set fabric settings according to user's input
-        sed("settings.py", "\"DB_PASS\": \"vagrant\"", "\"DB_PASS\": \"%s\"" % env.db_pass, use_sudo=True, backup="", shell=True)
-        sed("settings.py", "\"DB_PASS\": \"\"", "\"DB_PASS\": \"%s\"" % env.db_pass, use_sudo=True, backup="", shell=True)
-        sed("settings.py", "\"PROJECT_NAME\": \"\"", "\"PROJECT_NAME\": \"%s\"" % env.proj_name, use_sudo=True, backup="", shell=True)
-        sed("settings.py", "\"REPO_URL\": \"\"", "\"REPO_URL\": \"%s\"" % env.repo_url, use_sudo=True, backup="", shell=True)
-        sed("settings.py", "\"PROJECT_PATH\": \"\"", "\"PROJECT_PATH\": \"%s\"" % env.proj_path, use_sudo=True, backup="", shell=True)
+        sed("fabric_settings.py", "\"DB_PASS\": \"vagrant\"", "\"DB_PASS\": \"%s\"" % env.db_pass, use_sudo=True, backup="", shell=True)
+        sed("fabric_settings.py", "\"DB_PASS\": \"\"", "\"DB_PASS\": \"%s\"" % env.db_pass, use_sudo=True, backup="", shell=True)
+        sed("fabric_settings.py", "\"PROJECT_NAME\": \"\"", "\"PROJECT_NAME\": \"%s\"" % env.proj_name, use_sudo=True, backup="", shell=True)
+        sed("fabric_settings.py", "\"REPO_URL\": \"\"", "\"REPO_URL\": \"%s\"" % env.repo_url, use_sudo=True, backup="", shell=True)
+        sed("fabric_settings.py", "\"PROJECT_PATH\": \"\"", "\"PROJECT_PATH\": \"%s\"" % env.proj_path, use_sudo=True, backup="", shell=True)
 
         # We will be using the manticore fabfile not Mezzanine's
         sudo("rm fabfile.py")
@@ -141,8 +194,12 @@ def init_git():
     with project():
         run("git init")
         run("echo '.idea/' >> .gitignore")
+        run("echo 'last.commit' >> .gitignore")
+        run("echo 'gunicorn.pid' >> .gitignore")
         run("git add .")
         run("git commit -m'init'")
+
+        #TODO: We shouldn't assume unfuddle here
         with settings(warn_only=True):
             run("git remote add unfuddle %s" % env.repo_url)
             run("git config remote.unfuddle.push refs/heads/master:refs/heads/master")
@@ -178,15 +235,3 @@ class Helper:
 
         g.close()
         f.close()
-
-
-## Copy Existing Project ##
-#1 create the vagrant box
-
-#2 manticore-django install then deploy routine
-
-#3 PyCharm settings
-
-## Future ##
-# installing new requirements
-# running new migrations

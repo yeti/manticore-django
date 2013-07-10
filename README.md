@@ -3,81 +3,92 @@ manticore-django
 
 Utility functionality for a Manticore Django project
 
-Deployment script
------------------
-Manticore-django comes with a `fabric` deployment script. The script is based on Mezzanine's deployment script with additional features.
-These features allow the script to deploy an *application* and *database* server using different `settings.py`.
+Fabric script
+--------------
+Manticore-django comes with a `fabric` script for creating, cloning, and deploying Python Django source code. The script is inspired by Mezzanine's deployment script with additional features. These features allow the script to deploy an *application* and *database* server.
 
 Setup for:
 
-* Topologies
+* Three-tier topology
   * Single application/cron/database server
   * Multiple independent application servers
   * Multiple independent cron servers (cron servers are identical to application servers with cron processes enabled)
   * Master and slave Postgres server with Streaming Replication
-* Different targets aptly named *development*, *staging*, *production*, and *vagrant*.
-* Vagrant+Pycharm support -- doesn't run nginx, cron, or gunicorn
 
-Out of the box features:
+* Multiple target deployment
+  * Supports targets for *development* (default), *staging*, and *production*
+
+* Vagrant+Pycharm support
+  * Creating and cloning local projects
+  * Identical Vagrant tech stack as live servers
+  * Does not mess up your local computer's tech stack
+
+### Tech Stack
+
+Out of the box tech stack:
 
 * RabbitMQ asynchronous background task queue
-* Celery support
-* Copy your SSH public key to the server
-* Copy your repository's private key to the server
-* Copy database public/private keys on each database peer
+* Celery connection between RabbitMQ and Python Django
+* SSH public key deployment to live servers
+* Your source code repository's private key installation on live servers
+* Database public/private keys installation on database servers
 
 ### Requirements
+
+Prerequisities for running the script:
+
+* Python 2.6 or higher
+* `fabric`
+* `simplejson`
 
 These requirements should be listed in your `pip` requirements file:
 
 * Django 1.5 or higher
 * Mezzanine 1.4.3 or higher
-* `fabric`
-* `simplejson`
 * django-celery (optional)
 
-### Usage Scenario
+### Setup
 
-1. First, a valid installation of Python 2.6 or higher must be installed on your computer. Installing Python is specific to your operating system.
+1. A valid installation of Python 2.6 or higher must be installed on your computer.
 
-2. Optionally, virtualenvwrapper should be installed on your computer to keep Python projects separate: `pip install virtualenv`
+2. Fabric must be installed: `pip install fabric`
 
-3. Fabric, a deployment scripting tool, must be installed: `pip install fabric`
+3. Create `fabric_settings.py` in the same directory as manage.py. See next section for details.
 
-4. Your `settings.py` file has to be configured properly. See next section for details.
-
-5. If this is a first time installation: (a) replace Mezzanine's fabric script with the one in this repository; (b) create `deploy/development_settings.py`, `deploy/production_settings.py`, `deploy/staging_settings.py`, and/or `deploy/vagrant_settings.py`; and (c) add `deploy/celeryd.conf`. The contents of these files are presented below.
+4. If this is a first time installation, the project has to be setup:
+  a. remove Mezzanine's fabric script;
+  b. rename copies of `deploy/live_settings.py` as:
+    * `deploy/development_settings.py`, 
+    * `deploy/production_settings.py`, 
+    * `deploy/staging_settings.py`
+  d. add `deploy/celeryd.conf`. See the next section for details.
 
 Your directory structure should look like:
 
 * deploy
-  * celeryd.conf
   * crontab
-  * development_settings.py
   * gunicorn.conf.py
   * nginx.conf
-  * production_settings.py
-  * staging_settings.py
+  * **celeryd.conf**
+  * **development_settings.py**
+  * **production_settings.py**
+  * **staging_settings.py**
   * supervisor.conf
-  * vagrant_settings.py
-* fabfile.py
 * manage.py
 * local_settings.py
+* **fabric_settings.py**
 * settings.py
 * urls.py
 * ...
 
-6. If you make major configuration changes, you should run `fab create:True deploy`.
+5. If you make major configuration changes, you should run `fab deploy.create:True deploy.deploy`.
 
-7. If you are changing only source code, you should run `fab deploy` or `fab deployapp`.
+6. If you are changing only source code, you should run `fab deploy.deploy` or `fab deploy.deployapp`
 
-Fabric Configuration
---------------------
+Fabric Settings
+---------------
 
-This Fabric deploy script in Manticore-Django is a drop-in replacement for Mezzanine's fabric deployment.
-In addition to Mezzanine's script, you are able to configure application, cron, and database hosts separately.
-
-In your `settings.py` file:
+In your `fabric_settings.py` file:
 
         FABRIC = {
             "development": {
@@ -111,16 +122,16 @@ In your `settings.py` file:
             },
             "production" : {
                 ...
-            },
-            "vagrant": {
-                ... see below ...
             }
         }
 
 
 ### `deploy/development_settings.py`, `deploy/staging_settings.py`, and `deploy/production_settings.py`
 
-Create server-specific settings for each of the specified targets `deploy/development_settings.py`, `deploy/staging_settings.py`, and `deploy/production_settings.py`:
+Create server-specific settings for each of the specified targets:
+* `deploy/development_settings.py`, 
+* `deploy/staging_settings.py`, and 
+* `deploy/production_settings.py`:
 
         DATABASES = {
             "default": {
@@ -165,8 +176,7 @@ Create server-specific settings for each of the specified targets `deploy/develo
 
 ### deploy/celeryd.conf
 
-Add this file to your deploy directory along with `crontab`, `gunicorn.conf.py`, `nginx.conf`, and
-`supervisor.conf`.
+Add `deploy/celeryd.conf` to your project.
 
         ; ==============================================
         ;  celery worker supervisor example for Django
@@ -195,42 +205,24 @@ Add this file to your deploy directory along with `crontab`, `gunicorn.conf.py`,
 Modes
 -----
 
-1. `fab development ...`
-2. `fab staging ...`
-3. `fab production ...`
-4. `fab vagrant ...`
-5. `fab working ...`
+1. `fab deploy.development ...`
+2. `fab deploy.staging ...`
+3. `fab deploy.production ...`
 
-The **development** environment (1) is default. See the next section for (4) and (5).
+The **development** environment (1) is default.
 
 If something isn't working right and you want to know why, pass in a parameter `True` to these commands.
 
-1. `fab development:True`
-2. `fab staging:True`
-3. `fab production:True`
-4. `fab vagrant:True`
-5. `fab working:True`
+1. `fab deploy.development:True`
+2. `fab deploy.staging:True`
+3. `fab deploy.production:True`
 
+Creating and Cloning Projects with Vagrant
+------------------------------------------
 
-Vagrant Configuration
----------------------
+Usage scenario: you can use Pycharm to remotely connect to the Vagrant box for development. 
 
-Usage scenario: you can use Pycharm to remotely connect to the Vagrant box for development. In development,
-`nginx`, `gunicorn`, and `cron` are disabled.
-
-1. `fab up`
-2. `fab vagrant up`
-3. `fab vagrant ...`
-4. `fab working up`
-5. `fab working ...`
-
-(1) and (2) are equivalent of each other. Both will setup a Vagrant instance using the `"vagrant"` configuration in `FABRIC`.
-
-(3) will allow you to issue any of the regular commands such as `deploy` and `restartapp` using Vagrant's configuration.
-
-(4) and (5) are identical to Vagrant except that `manage.py` is run from `/vagrant/`'s directory, which is shared between
-host and client, instead of the repository's copy. When Vagrant is run, `/vagrant/<proj_name>/manage.py` replaces the
-one specified in `VIRTUALENV_HOME`. Make sure that you configure `BROKER_URL` if you intend to run `fab working up`.
+**TODO: we need to document this feature of the script**
 
 ### Setting up PyCharm
 
@@ -238,13 +230,6 @@ Prerequisites:
 
 * VirtualBox
 * Vagrant
-
-Steps:
-
-1. Configure PyCharm 2.7+ Vagrant settings to a Debian 6+ 64-bit machine
-2. Set the Project Interpreter to a Remote 127.0.0.1:2222
-3. Change your *Run > Configuration* to bind to host `0.0.0.0`
-4. Configure `Vagrantfile` to forward guest port `8000` to a host port
 
 ### local_settings.py
 
@@ -287,7 +272,9 @@ If you are running the working (non-committed) version of Django from `/vagrant/
 
 ### deploy/vagrant_settings.py
 
-This is a copy of `local_settings.py` that will be pushed to the server when `fab vagrant up` is called. The configuration for this
+TODO: document the fab command that creates this file
+
+This is a copy of `local_settings.py` that will be pushed to the Vagrant instance. The configuration for this file is:
 
         DATABASES = {
             "default": {
@@ -348,33 +335,37 @@ I tested the script with the following configurations:
 
 ### Configuration Issues
 
-* Some fabric settings are duplicated but needn't.
+* Some fabric settings are duplicated but aren't used.
 
-### Server Issues
+### Deploy Issues
 
 * Each project must have its own database servers. Archiving, restoring, and *Streaming Replication* are tightly coupled
   to the database server.
 
-* If the script fails in `fab all` because your project database already exists (i.e., an upgrade), you can
-  complete the upgrade with `fab create:True deploy`.
+* If the script fails in `fab deploy.all` because your project database already exists (i.e., an upgrade), you can
+  complete the upgrade with `fab deploy.create:True deploy.deploy`.
 
 * Automatic failover is not implemented. If the master database fails, manually configure a slave database as the master.
 
-* If a host is removed from `APPLICATION_HOSTS`, `CRON_HOSTS`, or `DATABASE_HOSTS`, you have to manually remove that
-  host entry from the Postgresql database configuration files.
+* If a host is removed from `APPLICATION_HOSTS`, `CRON_HOSTS`, or `DATABASE_HOSTS`, you have to manually remove that host entry from the Postgresql database configuration files.
 
 ### Vagrant Issues
 
-* Vagrant deployment does not run the cron task or nginx.
+* Vagrant deployment does not run the cron task or nginx in the virtual machine.
 
 * Vagrant will use the repository copy of `vagrant_settings.py` and `manage.py` for your Django project. Local changes
-  to the database and celery tasks will not take effect until `fab vagrant up` or `fab vagrant deploy` is run.
+  to the database and celery tasks will not take effect until `fab deploy.vagrant deploy.up` or `fab deploy.vagrant deploy.deploy` is run.
 
-* To use `local_settings.py` and the working (non-repository) copy, prefix all your tasks with `fab working`.
-  working uses the same FABRIC configuration as vagrant.
+* To use `local_settings.py` and the working (non-repository) copy, prefix all your tasks with `fab deploy.working`. The vagrant_settings.py configuration is used.
 
 * *NEVER* specify `VIRTUALENV_HOME` as the vagrant directory because it *will erase your local project*.
 
 * Database changes aren't persisted when a Vagrant instance is destroyed.
 
 * When running the script with vagrant, the following error might be shown: `Host key for server 127.0.0.1 does not match!`. The reason is another vagrant instance that you previously created. Remove the entry 127.0.0.1 from `~/.ssh/known_hosts` to fix.
+
+* If multiple virtual machines are running and the previous instance hasn't been shut down, then you'll have to stop the previous VM manually. When using Vagrant with VirtualBox, these commands are:
+  1. `VBoxManage list runningvms`
+  2. `VBoxManage controlvm your_vm_name poweroff`
+  3. `VBoxManage unregistervm your_vm_name --delete`
+

@@ -3,6 +3,9 @@ manticore-django
 
 Utility functionality for a Manticore Django project
 
+Fabric Script
+=============
+
 Fabric script
 --------------
 Manticore-django comes with a `fabric` script for creating, cloning, and deploying Python Django source code. The script is inspired by Mezzanine's deployment script with additional features. These features allow the script to deploy an *application* and *database* server.
@@ -85,8 +88,39 @@ Your directory structure should look like:
 
 6. If you are changing only source code, you should run `fab deploy.deploy` or `fab deploy.deployapp`
 
-Fabric Settings
----------------
+### Usage
+
+After the script is configured properly (see next section), then you can run fabric tasks to setup and redeploy your app.
+
+Before running any of these commands, you'll have to setup your server with a Debian-based operating system and have username+password SSH access.
+
+Here's the command to setup your server the first time:
+
+    fab -f path/to/fabfile deploy.all
+
+Subsequently, you can reploy using:
+
+    fab -f path/to/fabfile deploy.deploy
+
+### Switching Targets
+
+1. `fab deploy.development ...`
+2. `fab deploy.staging ...`
+3. `fab deploy.production ...`
+
+The **development** environment (1) is default.
+
+If something isn't working right and you want to know why, pass in a parameter `True` to these commands.
+
+1. `fab deploy.development:True`
+2. `fab deploy.staging:True`
+3. `fab deploy.production:True`
+
+
+Script Configuration
+--------------------
+
+### `fabric_settings.py`
 
 In your `fabric_settings.py` file:
 
@@ -202,20 +236,6 @@ Add `deploy/celeryd.conf` to your project.
         ; so it starts first
         priority=998
 
-Modes
------
-
-1. `fab deploy.development ...`
-2. `fab deploy.staging ...`
-3. `fab deploy.production ...`
-
-The **development** environment (1) is default.
-
-If something isn't working right and you want to know why, pass in a parameter `True` to these commands.
-
-1. `fab deploy.development:True`
-2. `fab deploy.staging:True`
-3. `fab deploy.production:True`
 
 Creating and Cloning Projects with Vagrant
 ------------------------------------------

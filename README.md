@@ -44,7 +44,7 @@ Prerequisities for running the script:
 * `fabric`
 * `simplejson`
 
-These requirements should be listed in your `pip` requirements file:
+These requirements should be listed in your `requirements/requirements.txt` file:
 
 * Django 1.5 or higher
 * Mezzanine 1.4.3 or higher
@@ -292,8 +292,6 @@ If you are running the working (non-committed) version of Django from `/vagrant/
 
 ### deploy/vagrant_settings.py
 
-TODO: document the fab command that creates this file
-
 This is a copy of `local_settings.py` that will be pushed to the Vagrant instance. The configuration for this file is:
 
         DATABASES = {
@@ -359,11 +357,9 @@ I tested the script with the following configurations:
 
 ### Deploy Issues
 
-* Each project must have its own database servers. Archiving, restoring, and *Streaming Replication* are tightly coupled
-  to the database server.
+* If more than one database server is specified, multiple projects should not be hosted on the same server. Archiving, restoring, and *Streaming Replication* are global settings for each master-slave databse setup.
 
-* If the script fails in `fab deploy.all` because your project database already exists (i.e., an upgrade), you can
-  complete the upgrade with `fab deploy.create:True deploy.deploy`.
+* If the script fails in `fab deploy.all` because your project database already exists (i.e., an upgrade), you can complete the upgrade with `fab deploy.create:True deploy.deploy`.
 
 * Automatic failover is not implemented. If the master database fails, manually configure a slave database as the master.
 

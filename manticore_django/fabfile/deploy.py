@@ -788,7 +788,7 @@ def createapp1():
             removeapp()
         run("virtualenv %s --distribute" % env.proj_name)
         vcs = "git" if env.git else "hg"
-        run("%s clone %s %s" % (vcs, env.repo_url, env.proj_path))
+        run("git clone %s %s" % (env.repo_url, env.proj_path))
         with project():
             run("git submodule init")
             run("git submodule update")

@@ -9,6 +9,7 @@ from fabric.operations import local, os, get, put
 from fabric.tasks import execute
 from utils import log_call, pip, project, activate_venv
 from deploy import vagrant, install_prereq, installdb, fix_db_permissions, installapp, copy_db_ssh_keys, create_prereq, removeapp, run, sudo, manage, create_rabbit, createdb, createapp2, up
+from fabric.contrib.files import append
 
 __author__ = 'rudy'
 
@@ -157,6 +158,7 @@ def create_project():
         Helper().add_line_to_list("remote_settings.py", "settings.py.tmp", "INSTALLED_APPS = (", '    "%s",' % env.app_name)
         put("settings.py.tmp", "settings.py", use_sudo=True)
         put("%s/vagrant_settings.py" % os.path.dirname(os.path.realpath(__file__)), "deploy/vagrant_settings.py", use_sudo=True)
+        put("%s/celeryd.conf" % os.path.dirname(os.path.realpath(__file__)), "deploy/celeryd.conf", use_sudo=True)
 
         # Add the appropriate fabric settings for local and development deployment
         put("fabric_settings.py", "fabric_settings.py", use_sudo=True)
@@ -176,7 +178,17 @@ def create_project():
         # We will be using the manticore fabfile not Mezzanine's
         sudo("rm fabfile.py")
 
+        # Change Mezzanine project to be compatible with this fabfile
+        sed("deploy/live_settings.py", "\"HOST\": \"127.0.0.1\"", "\"HOST\": \"%s\"" % "%(primary_database_host)s", use_sudo=True, backup="", shell=True)
+        append("deploy/live_settings.py", "\n# Django 1.5+ requires a set of allowed hosts\nALLOWED_HOSTS = [%(allowed_hosts)s]\n\n# Celery configuration (if django-celery is installed in requirements/requirements.txt)\nBROKER_URL = 'amqp://%(proj_name)s:%(admin_pass)s@127.0.0.1:5672/%(proj_name)s'\n\n")
+
+
         #TODO: Install and Link manticore-django fabfile package?
+
+        run("cp deploy/live_settings.py deploy/development_settings.py")
+        run("cp deploy/live_settings.py deploy/staging_settings.py")
+        run("cp deploy/live_settings.py deploy/production_settings.py")
+        run("rm deploy/live_settings.py")
 
     local("rm settings.py.tmp remote_settings.py")
 

@@ -85,7 +85,7 @@ def load_environment(conf, show_info):
     env.live_host = conf.get("LIVE_HOSTNAME", get_host(conf.get("APPLICATION_HOSTS")[0]) if conf.get("APPLICATION_HOSTS") else None)
     env.sitename = conf.get("SITENAME", "Default")
     env.repo_url = conf.get("REPO_URL", "")
-    env.git = env.repo_url.startswith("git") or env.repo_url.endswith(".git")
+    env.git = True
     env.reqs_path = conf.get("REQUIREMENTS_PATH", None)
     env.gunicorn_port = conf.get("GUNICORN_PORT", 8000)
     env.locale = conf.get("LOCALE", "en_US.UTF-8")

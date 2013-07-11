@@ -6,6 +6,7 @@ from fabric.context_managers import cd, prefix, hide
 from fabric.decorators import task, roles
 from fabric.state import env
 from fabric.api import sudo as _sudo
+from fabric.api import run
 
 __author__ = 'rudy'
 
@@ -80,3 +81,4 @@ def project():
     with activate_venv():
         with cd(env.proj_path):
             yield
+

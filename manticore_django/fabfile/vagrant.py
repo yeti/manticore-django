@@ -125,6 +125,12 @@ def create_vagrantfile():
         local("sed 's/# config.vm.network :forwarded_port, guest: 80, host: 8080/config.vm.network :forwarded_port, guest: 8000, host: 8000/g' Vagrantfile > Vagrantfile.tmp")
         local("mv Vagrantfile.tmp Vagrantfile")
 
+    running_vms = local("VBoxManage list runningvms", capture=True)
+    if running_vms != '':
+        print running_vms
+        print "\nAborting! Please run vagrant halt on currently running vms."
+        return False
+
     local("vagrant up")
     return True
 

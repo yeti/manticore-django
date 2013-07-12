@@ -2,7 +2,7 @@ from genericpath import exists
 from importlib import import_module
 from fabric.context_managers import cd, settings
 from fabric.contrib.console import confirm
-from fabric.contrib.files import sed, _expand_path
+from fabric.contrib.files import sed, _expand_path, exists as remote_exists
 from fabric.state import env
 from fabric.decorators import task, roles
 from fabric.operations import local, os, get, put
@@ -216,6 +216,27 @@ def init_git():
             run("git remote add unfuddle %s" % env.repo_url)
             run("git config remote.unfuddle.push refs/heads/master:refs/heads/master")
         run("git push unfuddle master")
+
+
+@task
+@roles("application")
+def create_compressor():
+    sudo("apt-get install -y -q g++ make checkinstall")
+
+    if not remote_exists("~/src", use_sudo=True):
+        sudo("mkdir ~/src")
+
+    with cd("~/src"):
+        sudo("wget -N http://nodejs.org/dist/v0.10.13/node-v0.10.13.tar.gz")
+        sudo("tar xzvf node-v0.10.13.tar.gz")
+
+        with cd("node-v0.10.13"):
+            sudo("./configure")
+            #TODO: Currently prompts you to fill out documentation and change node version number
+            sudo("checkinstall")
+            sudo("dpkg -i node_*")
+
+    sudo("npm install less")
 
 
 class Helper:

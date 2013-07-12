@@ -236,7 +236,7 @@ def create_compressor():
             sudo("checkinstall")
             sudo("dpkg -i node_*")
 
-    sudo("npm install less")
+    sudo("npm install -g less")
 
 
 class Helper:

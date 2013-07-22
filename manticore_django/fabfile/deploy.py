@@ -25,6 +25,12 @@ from utils import log_call, pip, print_command, sudo, project
 # removes the port
 
 
+# this function has to be defined before load_environment()
+def check_db_password(password):
+    chars = set('$()@') # characters to block
+    return not any((c in chars) for c in password)
+
+
 def get_host(host_name):
     if host_name.find(":") != -1:
         return host_name[0:host_name.find(":")]
@@ -96,6 +102,10 @@ def load_environment(conf, show_info):
     env.deploy_db_cluster_key_path = conf.get("DEPLOY_DB_CLUSTER_SSH_KEY_PATH")
     env.apt_requirements = conf.get("APT_REQUIREMENTS", [])
 
+
+    # safety check the db password
+    if not check_db_password(env.db_pass):
+        abort("The database password contains disallowed special characters.")
 
 if sys.argv[0].split(os.sep)[-1] in ("fab",             # POSIX
                                      "fab-script.py"):  # Windows
@@ -551,6 +561,9 @@ def db_pass():
     """
     if not env.db_pass:
         env.db_pass = getpass("Enter the database password: ")
+        if not check_db_password(env.db_pass):
+            abort("The password you provided contains disallowed special characters")
+
     return env.db_pass
 
 

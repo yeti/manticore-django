@@ -438,7 +438,7 @@ class MultiContainerCloudFilesStorage(SwiftclientStorage):
                 self.set_connection_by_container_name(container_name)
 
                 # Then get and set the container
-                self.container = self.connection.create_container(container_name)
+                self.container = self.connection.get_container(container_name)
                 if hasattr(self, '_container_public_uri'):
                     delattr(self, '_container_public_uri')
             return new_name
@@ -448,7 +448,7 @@ class MultiContainerCloudFilesStorage(SwiftclientStorage):
                 self.set_connection_by_container_name(self.container_name)
 
                 # Then get and set the container
-                self.container = self.connection.create_container(self.container_name)
+                self.container = self.connection.get_container(self.container_name)
                 if hasattr(self, '_container_public_uri'):
                     delattr(self, '_container_public_uri')
             return name
@@ -463,7 +463,7 @@ class MultiContainerCloudFilesStorage(SwiftclientStorage):
         self.set_connection_by_container_name(container_name)
 
         # Then get and set the container
-        self.container = self.connection.create_container(container_name)
+        self.container = self.connection.get_container(container_name)
         if hasattr(self, '_container_public_uri'):
             delattr(self, '_container_public_uri')
 
@@ -471,6 +471,6 @@ class MultiContainerCloudFilesStorage(SwiftclientStorage):
         self.connection
 
         if CUMULUS['CONTAINER_REGIONS'][container_name] == "ORD":
-            self._connection = self.ord_connection
+            self.connection = self.ord_connection
         else:
-            self._connection = self.dfw_connection
+            self.connection = self.dfw_connection

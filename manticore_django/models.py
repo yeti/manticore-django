@@ -1,15 +1,9 @@
 import StringIO
-import cStringIO
-from cumulus.storage import CloudFilesStorage
-from django.core.files.storage import default_storage
 import os
 from PIL import Image
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.db import models
 from _ssl import SSLError
-import requests
-import urllib
-from weathermob.manticore_django.manticore_django.storage import MultiContainerCloudFilesStorage
 
 
 class CoreModel(models.Model):

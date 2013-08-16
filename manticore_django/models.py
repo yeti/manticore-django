@@ -1,8 +1,15 @@
 import StringIO
+import cStringIO
+from cumulus.storage import CloudFilesStorage
+from django.core.files.storage import default_storage
 import os
 from PIL import Image
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.db import models
+from _ssl import SSLError
+import requests
+import urllib
+from weathermob.manticore_django.manticore_django.storage import MultiContainerCloudFilesStorage
 
 
 class CoreModel(models.Model):
@@ -32,8 +39,8 @@ def resize_model_photos(sender, **kwargs):
 
 
 def process_thumbnail(instance, sizes, crop=False):
-    # photo_path = str(instance.original_photo.path)  # this returns the full system path to the original file
-    original_image = Image.open(instance.original_photo)  # open the image using PIL
+    file = StringIO.StringIO(instance.original_photo.read())
+    original_image = Image.open(file)  # open the image using PIL
 
     # pull a few variables out of that full path
     filename = os.path.basename(instance.original_photo.name).rsplit('.', 1)[0]
@@ -71,7 +78,22 @@ def process_thumbnail(instance, sizes, crop=False):
         if im.mode != "RGB":
             im = im.convert("RGB")
         im.save(tempfile_io, 'JPEG')
+
         temp_file = InMemoryUploadedFile(tempfile_io, None, name, 'image/jpeg', tempfile_io.len, None)
-        getattr(instance, size_name).save(name, temp_file)
+
+        done, tries = False, 0
+        while not done:
+            try:
+                # Make sure we're at the beginning of the file for reading when saving
+                temp_file.seek(0)
+                getattr(instance, size_name).save(name, temp_file)
+                done = True
+            except SSLError:
+                pass
+
+            # Try at max, 10 times before quitting
+            tries += 1
+            if tries > 10:
+                done = True
 
     return True

@@ -28,10 +28,6 @@ class MultiContainerCloudFilesStorage(CloudFilesStorage):
         self.set_random_container()
         return super(MultiContainerCloudFilesStorage, self).exists(name)
 
-    def size(self, name):
-        name = self.set_current_container(name)
-        return super(MultiContainerCloudFilesStorage, self).size(name)
-
     def url(self, name):
         name = self.set_current_container(name)
         return super(MultiContainerCloudFilesStorage, self).url(name)

@@ -46,14 +46,16 @@ class MultiContainerCloudFilesStorage(CloudFilesStorage):
         """
         container_name, separator, new_name = name.partition("/")
         if container_name in self.all_containers:
-            self.container = self.connection.get_container(container_name)
-            if hasattr(self, '_container_public_uri'):
-                delattr(self, '_container_public_uri')
+            if self.container.name != container_name:
+                self.container = self.connection.get_container(container_name)
+                if hasattr(self, '_container_public_uri'):
+                    delattr(self, '_container_public_uri')
             return new_name
         else:  # Else we need to use the default container
-            self.container = self.connection.get_container(self.container_name)
-            if hasattr(self, '_container_public_uri'):
-                delattr(self, '_container_public_uri')
+            if self.container.name != self.container_name:
+                self.container = self.connection.get_container(self.container_name)
+                if hasattr(self, '_container_public_uri'):
+                    delattr(self, '_container_public_uri')
             return name
 
     def set_random_container(self):

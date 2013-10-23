@@ -7,7 +7,7 @@ from fabric.state import env
 from fabric.decorators import task, roles
 from fabric.operations import local, os, get, put
 from fabric.tasks import execute
-from utils import log_call, pip, project, activate_venv
+from utils import log_call, pip, project, activate_venv, virtualenv
 from deploy import vagrant, install_prereq, installdb, fix_db_permissions, installapp, copy_db_ssh_keys, create_prereq, removeapp, run, sudo, manage, create_rabbit, createdb, createapp2, up
 from fabric.contrib.files import append
 
@@ -45,6 +45,7 @@ def new(project_name='', app_name='', db_password='', repo_url=''):
     env.app_name = app_name
     env.manage = "%s/bin/python /vagrant/%s/manage.py" % (env.venv_path, env.proj_name)
     env.repo_url = repo_url
+
 
     # Set up vagrant box with appropriate system packages
     execute(install_prereq)
@@ -244,6 +245,20 @@ def create_compressor():
 
     sudo("npm install -g less")
 
+@task
+@log_call
+def pip_install():
+    """Runs pip install"""
+    env.settings = __import__("fabric_settings", globals(), locals(), [], 0).FABRIC
+    print env.settings
+    vagrant()
+    execute(pip_install_task)
+
+
+@roles("application")
+def pip_install_task():
+    with virtualenv():
+        sudo("pip install -r %s/%s" % (env.proj_path, env.reqs_path))
 
 class Helper:
     def add_line_to_list(self, read_file, write_file, list, insert_line):

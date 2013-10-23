@@ -95,6 +95,8 @@ def load_environment(conf, show_info):
     env.deploy_ssh_key_path = conf.get("DEPLOY_SSH_KEY_PATH")
     env.deploy_db_cluster_key_path = conf.get("DEPLOY_DB_CLUSTER_SSH_KEY_PATH")
     env.apt_requirements = conf.get("APT_REQUIREMENTS", [])
+    env.install_extras = conf.get("INSTALL_EXTRAS", [])
+    env.db_extensions = conf.get("DB_EXTENSIONS", [])
 
 
 if sys.argv[0].split(os.sep)[-1] in ("fab",             # POSIX
@@ -747,6 +749,14 @@ def uninstalldb():
     sudo("/etc/init.d/postgresql stop")
     sudo("apt-get remove postgresql")
 
+
+@task
+@log_call
+def installextras():
+    for install_extra in env.install_extras:
+        execute(globals()[install_extra])
+
+
 @task
 @log_call
 def install():
@@ -756,6 +766,16 @@ def install():
     execute(install_prereq)
     execute(installapp)
     execute(installdb)
+    execute(installextras)
+
+@task
+@parallel
+@roles('application', 'cron')
+def install_phantom_js():
+    sudo("wget https://phantomjs.googlecode.com/files/phantomjs-1.9.2-linux-x86_64.tar.bz2")
+    sudo("tar xvjf phantomjs-1.9.2-linux-x86_64.tar.bz2")
+    sudo("mv phantomjs-1.9.2-linux-x86_64 /usr/lib")
+    sudo("ln -s /usr/lib/phantomjs-1.9.2-linux-x86_64/bin/phantomjs /usr/bin/.")
 
 #########################
 # Create                #
@@ -970,6 +990,13 @@ def createdb_slave():
             break
 
 @roles("database")
+def createdb_extensions(warn_on_account_creation=False):
+    with settings(warn_only=warn_on_account_creation):
+        for extension in env.db_extensions:
+            psql("CREATE EXTENSION {0}".format(extension))
+
+
+@roles("database")
 def createdb_accounts(warn_on_account_creation=False):
     with settings(warn_only=warn_on_account_creation):
         # Create DB and DB user.
@@ -995,6 +1022,7 @@ def createdb(warn_on_account_creation=False):
     execute(createdb_accounts, warn_on_account_creation)
     execute(createdb_snapshot_master)
     execute(createdb_slave)
+    execute(createdb_extensions)
 
 @task
 @roles("database")

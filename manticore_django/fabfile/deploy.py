@@ -1004,9 +1004,9 @@ def createdb_slave():
 
 @roles("database")
 def createdb_extensions(warn_on_account_creation=False):
-    with settings(warn_only=warn_on_account_creation):
+    with settings(warn_only=True):
         for extension in env.db_extensions:
-            psql("CREATE EXTENSION {0}".format(extension))
+            postgres('psql -c "CREATE EXTENSION {0}" -d {1}'.format(extension, env.proj_name))
 
 
 @roles("database")

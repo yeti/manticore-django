@@ -129,8 +129,8 @@ def create_vagrantfile():
     running_vms = local("VBoxManage list runningvms", capture=True)
     if running_vms != '':
         print running_vms
-        print "\nAborting! Please run vagrant halt on currently running vms."
-        return False
+        if not confirm("A virtual machine is already running, continue?"):
+            return False
 
     local("vagrant up")
     return True

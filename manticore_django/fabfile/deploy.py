@@ -739,7 +739,7 @@ def installapp():
     apt("nginx libjpeg-dev python-dev python-setuptools "
         "memcached libffi-dev rabbitmq-server")
     sudo("easy_install pip")
-    sudo("pip install virtualenv")
+    sudo("pip install virtualenv --no-use-wheel")
     apt(" ".join(env.apt_requirements))
 
 @task

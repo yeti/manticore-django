@@ -51,7 +51,7 @@ def pip(packages):
     Installs one or more Python packages within the virtual environment.
     """
     with virtualenv():
-        return sudo("pip install %s --no-use-wheel" % packages)
+        return sudo("pip install %s" % packages)
 
 
 ######################################

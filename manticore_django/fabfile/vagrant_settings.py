@@ -46,3 +46,5 @@ BROKER_URL = 'amqp://%(proj_name)s:%(admin_pass)s@127.0.0.1:5672/%(proj_name)s'
 RAVEN_CONFIG = {}
 
 DEBUG = True
+
+SECRET_KEY = "1234"

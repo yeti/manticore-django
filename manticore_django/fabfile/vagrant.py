@@ -157,7 +157,7 @@ def create_project():
             sudo("mezzanine-project %s" % env.proj_name)
 
     with project():
-        sudo("pip freeze > requirements/requirements.txt")
+        sudo("pip freeze > requirements.txt")
 
         sudo("%s startapp %s" % (env.manage, env.app_name))
 

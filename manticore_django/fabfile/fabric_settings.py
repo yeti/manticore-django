@@ -22,7 +22,7 @@ FABRIC = {
         "VIRTUALENV_HOME": "/home/vagrant", # Absolute remote path for virtualenvs
         "PROJECT_NAME": "", # Unique identifier for project
         "PROJECT_PATH": "",
-        "REQUIREMENTS_PATH": "requirements/requirements.txt", # Path to pip requirements, relative to project
+        "REQUIREMENTS_PATH": "requirements.txt", # Path to pip requirements, relative to project
         "GUNICORN_PORT": 8001, # Port gunicorn will listen on
         "LOCALE": "en_US.UTF-8", # Should end with ".UTF-8"
         "REPO_URL": "", # Git or Mercurial remote repo URL for the project
@@ -49,7 +49,7 @@ FABRIC = {
         "SITENAME": "Default",
         "VIRTUALENV_HOME": "/root/envs", # Absolute remote path for virtualenvs
         "PROJECT_NAME": "", # Unique identifier for project
-        "REQUIREMENTS_PATH": "requirements/requirements.txt", # Path to pip requirements, relative to project
+        "REQUIREMENTS_PATH": "requirements.txt", # Path to pip requirements, relative to project
         "GUNICORN_PORT": 8001, # Port gunicorn will listen on
         "LOCALE": "en_US.UTF-8", # Should end with ".UTF-8"
         "REPO_URL": "", # Git or Mercurial remote repo URL for the project

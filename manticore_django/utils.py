@@ -6,8 +6,8 @@ def retry_cloudfiles(method, *args):
     done, tries = False, 0
     while not done:
         try:
-            method(*args)
-            done = True
+            result = method(*args)
+            return result
         except SSLError:
             pass
         except ClientException:

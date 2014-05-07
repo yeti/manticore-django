@@ -60,7 +60,7 @@ These requirements should be listed in your `requirements/requirements.txt` file
 
 4. If this is a first time installation, the project has to be setup:
   a. remove Mezzanine's fabric script;
-  b. rename copies of `deploy/live_settings.py` as:
+  b. rename copies of `deploy/local_settings.py.template` as:
     * `deploy/development_settings.py`, 
     * `deploy/production_settings.py`, 
     * `deploy/staging_settings.py`

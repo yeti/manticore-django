@@ -122,7 +122,7 @@ def create_vagrantfile():
         if not confirm("Vagrant file already exists, continue anyways?"):
             return False
     else:
-        local("vagrant init debian-squeeze http://dl.dropbox.com/u/54390273/vagrantboxes/Squeeze64_VirtualBox4.2.4.box")
+        local("vagrant init wheezy https://dl.dropboxusercontent.com/u/197673519/debian-7.2.0.box")
         local("sed 's/# config.vm.network :forwarded_port, guest: 80, host: 8080/config.vm.network :forwarded_port, guest: 8000, host: 8000/g' Vagrantfile > Vagrantfile.tmp")
         local("mv Vagrantfile.tmp Vagrantfile")
 
@@ -186,16 +186,16 @@ def create_project():
         sudo("rm fabfile.py")
 
         # Change Mezzanine project to be compatible with this fabfile
-        sed("deploy/live_settings.py", "\"HOST\": \"127.0.0.1\"", "\"HOST\": \"%s\"" % "%(primary_database_host)s", use_sudo=True, backup="", shell=True)
-        append("deploy/live_settings.py", "\n# Django 1.5+ requires a set of allowed hosts\nALLOWED_HOSTS = [%(allowed_hosts)s]\n\n# Celery configuration (if django-celery is installed in requirements/requirements.txt)\nBROKER_URL = 'amqp://%(proj_name)s:%(admin_pass)s@127.0.0.1:5672/%(proj_name)s'\n\n")
+        sed("deploy/local_settings.py.template", "\"HOST\": \"127.0.0.1\"", "\"HOST\": \"%s\"" % "%(primary_database_host)s", use_sudo=True, backup="", shell=True)
+        append("deploy/local_settings.py.template", "\n# Django 1.5+ requires a set of allowed hosts\nALLOWED_HOSTS = [%(allowed_hosts)s]\n\n# Celery configuration (if django-celery is installed in requirements/requirements.txt)\nBROKER_URL = 'amqp://%(proj_name)s:%(admin_pass)s@127.0.0.1:5672/%(proj_name)s'\n\n")
 
 
         #TODO: Install and Link manticore-django fabfile package?
 
-        run("cp deploy/live_settings.py deploy/development_settings.py")
-        run("cp deploy/live_settings.py deploy/staging_settings.py")
-        run("cp deploy/live_settings.py deploy/production_settings.py")
-        run("rm deploy/live_settings.py")
+        run("cp deploy/local_settings.py.template deploy/development_settings.py")
+        run("cp deploy/local_settings.py.template deploy/staging_settings.py")
+        run("cp deploy/local_settings.py.template deploy/production_settings.py")
+        run("rm deploy/local_settings.py.template")
 
     local("rm settings.py.tmp remote_settings.py")
 

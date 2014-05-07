@@ -26,7 +26,7 @@ FABRIC = {
         "GUNICORN_PORT": 8001, # Port gunicorn will listen on
         "LOCALE": "en_US.UTF-8", # Should end with ".UTF-8"
         "REPO_URL": "", # Git or Mercurial remote repo URL for the project
-        "LINUX_DISTRO": "squeeze",
+        "LINUX_DISTRO": "wheezy",
     },
     "development": {
         "SSH_USER": "root", # SSH username
@@ -53,6 +53,6 @@ FABRIC = {
         "GUNICORN_PORT": 8001, # Port gunicorn will listen on
         "LOCALE": "en_US.UTF-8", # Should end with ".UTF-8"
         "REPO_URL": "", # Git or Mercurial remote repo URL for the project
-        "LINUX_DISTRO": "squeeze",
+        "LINUX_DISTRO": "wheezy",
     }
 }

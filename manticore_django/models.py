@@ -4,6 +4,7 @@ from PIL import Image
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.db import models
 from _ssl import SSLError
+from manticore_django.manticore_django.utils import retry_cloudfiles
 
 
 class CoreModel(models.Model):
@@ -75,19 +76,11 @@ def process_thumbnail(instance, sizes, crop=False):
 
         temp_file = InMemoryUploadedFile(tempfile_io, None, name, 'image/jpeg', tempfile_io.len, None)
 
-        done, tries = False, 0
-        while not done:
-            try:
-                # Make sure we're at the beginning of the file for reading when saving
-                temp_file.seek(0)
-                getattr(instance, size_name).save(name, temp_file)
-                done = True
-            except SSLError:
-                pass
+        def save_image(temp_file, instance, size_name, name):
+            # Make sure we're at the beginning of the file for reading when saving
+            temp_file.seek(0)
+            getattr(instance, size_name).save(name, temp_file)
 
-            # Try at max, 10 times before quitting
-            tries += 1
-            if tries > 10:
-                done = True
+        retry_cloudfiles(save_image, temp_file, instance, size_name, name)
 
     return True

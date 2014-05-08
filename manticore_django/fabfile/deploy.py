@@ -1241,7 +1241,7 @@ def deployapp1_cron_templates():
             upload_template_and_reload(name)
 
 @roles("application",'cron')
-def deployapp2():
+def deployapp2(collect_static=True):
     with project():
         static_dir = static()
         if exists(static_dir):
@@ -1254,7 +1254,7 @@ def deployapp2():
         run("git submodule init")
         run("git submodule sync")
         run("git submodule update")
-        if env.mode != "vagrant":
+        if env.mode != "vagrant" and collect_static:
             manage("collectstatic -v 0 --noinput")
         manage("syncdb --noinput")
         manage("migrate --noinput")
@@ -1277,9 +1277,19 @@ def deployapp():
     """
     deploy(True)
 
+
 @task
 @log_call
-def deploy(skip_db=False):
+def deployapp_without_static():
+    """
+    Deploy the application without running collectstatic and upgrading the database. Useful for old version of Postgres.
+    """
+    deploy(True, collect_static=False)
+
+
+@task
+@log_call
+def deploy(skip_db=False, collect_static=True):
     """
     Deploy latest version of the project.
     Check out the latest version of the project from version
@@ -1293,7 +1303,7 @@ def deploy(skip_db=False):
     if not skip_db:
         execute(backupdb)
         execute(deploydb_hba)
-    execute(deployapp2)
+    execute(deployapp2, collect_static=collect_static)
 
     return True
 

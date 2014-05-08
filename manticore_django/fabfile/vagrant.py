@@ -122,8 +122,9 @@ def create_vagrantfile():
         if not confirm("Vagrant file already exists, continue anyways?"):
             return False
     else:
-        local("vagrant init debian-squeeze http://dl.dropbox.com/u/54390273/vagrantboxes/Squeeze64_VirtualBox4.2.4.box")
+        local("vagrant init wheezy https://dl.dropboxusercontent.com/u/197673519/debian-7.2.0.box")
         local("sed 's/# config.vm.network :forwarded_port, guest: 80, host: 8080/config.vm.network :forwarded_port, guest: 8000, host: 8000/g' Vagrantfile > Vagrantfile.tmp")
+        local("sed 's/# config.ssh.forward_agent = true/config.ssh.forward_agent = true/g' Vagrantfile > Vagrantfile.tmp")
         local("mv Vagrantfile.tmp Vagrantfile")
 
     running_vms = local("VBoxManage list runningvms", capture=True)
@@ -144,7 +145,7 @@ def create_virtualenv():
                 print "\nAborting!"
                 return False
             removeapp()
-        sudo("virtualenv %s --distribute" % env.proj_name)
+        run("virtualenv %s --distribute" % env.proj_name)
 
 
 @roles('application')
@@ -186,16 +187,16 @@ def create_project():
         sudo("rm fabfile.py")
 
         # Change Mezzanine project to be compatible with this fabfile
-        sed("deploy/live_settings.py", "\"HOST\": \"127.0.0.1\"", "\"HOST\": \"%s\"" % "%(primary_database_host)s", use_sudo=True, backup="", shell=True)
-        append("deploy/live_settings.py", "\n# Django 1.5+ requires a set of allowed hosts\nALLOWED_HOSTS = [%(allowed_hosts)s]\n\n# Celery configuration (if django-celery is installed in requirements/requirements.txt)\nBROKER_URL = 'amqp://%(proj_name)s:%(admin_pass)s@127.0.0.1:5672/%(proj_name)s'\n\n")
+        sed("deploy/local_settings.py.template", "\"HOST\": \"127.0.0.1\"", "\"HOST\": \"%s\"" % "%(primary_database_host)s", use_sudo=True, backup="", shell=True)
+        append("deploy/local_settings.py.template", "\n# Django 1.5+ requires a set of allowed hosts\nALLOWED_HOSTS = [%(allowed_hosts)s]\n\n# Celery configuration (if django-celery is installed in requirements/requirements.txt)\nBROKER_URL = 'amqp://%(proj_name)s:%(admin_pass)s@127.0.0.1:5672/%(proj_name)s'\n\n")
 
 
         #TODO: Install and Link manticore-django fabfile package?
 
-        run("cp deploy/live_settings.py deploy/development_settings.py")
-        run("cp deploy/live_settings.py deploy/staging_settings.py")
-        run("cp deploy/live_settings.py deploy/production_settings.py")
-        run("rm deploy/live_settings.py")
+        run("cp deploy/local_settings.py.template deploy/development_settings.py")
+        run("cp deploy/local_settings.py.template deploy/staging_settings.py")
+        run("cp deploy/local_settings.py.template deploy/production_settings.py")
+        run("rm deploy/local_settings.py.template")
 
     local("rm settings.py.tmp remote_settings.py")
 
@@ -210,19 +211,17 @@ def init_db():
 
 @roles('application')
 def init_git():
-    with project():
-        run("git init")
-        run("echo '.idea/' >> .gitignore")
-        run("echo 'last.commit' >> .gitignore")
-        run("echo 'gunicorn.pid' >> .gitignore")
-        run("git add .")
-        run("git commit -m'init'")
+    local("git init")
+    local("echo '.idea/' >> .gitignore")
+    local("echo 'last.commit' >> .gitignore")
+    local("echo 'gunicorn.pid' >> .gitignore")
+    local("git add .")
+    local("git commit -m'init'")
 
-        #TODO: We shouldn't assume unfuddle here
-        with settings(warn_only=True):
-            run("git remote add unfuddle %s" % env.repo_url)
-            run("git config remote.unfuddle.push refs/heads/master:refs/heads/master")
-        run("git push unfuddle master")
+    with settings(warn_only=True):
+        local("git remote add origin %s" % env.repo_url)
+        local("git config remote.origin.push refs/heads/master:refs/heads/master")
+    local("git push origin master")
 
 
 @task

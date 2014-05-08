@@ -62,7 +62,7 @@ def load_environment(conf, show_info):
     env.cron_hosts = conf.get("CRON_HOSTS", conf.get("APPLICATION_HOSTS")) # used for our own consumption
     env.database_hosts = conf.get("DATABASE_HOSTS") # used for matching public and private database host IP addresses
     env.private_database_hosts = conf.get("PRIVATE_DATABASE_HOSTS", ["127.0.0.1"])
-    env.primary_database_host = env.private_database_hosts[0] # the first listed private database host is the master, used by live_settings.py
+    env.primary_database_host = env.private_database_hosts[0] # the first listed private database host is the master, used by local_settings.py.template
     env.private_application_hosts = conf.get("PRIVATE_APPLICATION_HOSTS", ["127.0.0.1"])
     env.private_cron_hosts = conf.get("PRIVATE_CRON_HOSTS", env.private_application_hosts)
     if conf.get("LIVE_HOSTNAME"):
@@ -73,9 +73,9 @@ def load_environment(conf, show_info):
         if not "127.0.0.1" in tmp_hosts: # nginx always comes from local host
             tmp_hosts.append("127.0.0.1")
 
-        env.allowed_hosts = ",".join(["'%s'" % get_host(host) for host in tmp_hosts]) # used by live_settings.py to set Django's allowed hosts
+        env.allowed_hosts = ",".join(["'%s'" % get_host(host) for host in tmp_hosts]) # used by local_settings.py.template to set Django's allowed hosts
     else:
-        env.allowed_hosts = ",".join(["'%s'" % get_host(host) for host in conf.get("APPLICATION_HOSTS")]) # used by live_settings.py to set Django's allowed hosts
+        env.allowed_hosts = ",".join(["'%s'" % get_host(host) for host in conf.get("APPLICATION_HOSTS")]) # used by local_settings.py.template to set Django's allowed hosts
 
     assert len(env.private_database_hosts) == len(env.database_hosts), "Same number of DATABASE_HOSTS and PRIVATE_DATABASE_HOSTS must be listed"
     assert len(env.private_application_hosts) == len(env.application_hosts), "Same number of APPLICATION_HOSTS and PRIVATE_APPLICATION_HOSTS must be listed"
@@ -95,7 +95,7 @@ def load_environment(conf, show_info):
     env.reqs_path = conf.get("REQUIREMENTS_PATH", None)
     env.gunicorn_port = conf.get("GUNICORN_PORT", 8000)
     env.locale = conf.get("LOCALE", "en_US.UTF-8")
-    env.linux_distro = conf.get("LINUX_DISTRO", "squeeze")
+    env.linux_distro = conf.get("LINUX_DISTRO", "wheezy")
 
     env.deploy_my_public_key = conf.get("DEPLOY_MY_PUBLIC_KEY")
     env.deploy_ssh_key_path = conf.get("DEPLOY_SSH_KEY_PATH")

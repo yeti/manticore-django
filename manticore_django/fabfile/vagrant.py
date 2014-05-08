@@ -124,6 +124,7 @@ def create_vagrantfile():
     else:
         local("vagrant init wheezy https://dl.dropboxusercontent.com/u/197673519/debian-7.2.0.box")
         local("sed 's/# config.vm.network :forwarded_port, guest: 80, host: 8080/config.vm.network :forwarded_port, guest: 8000, host: 8000/g' Vagrantfile > Vagrantfile.tmp")
+        local("sed 's/# config.ssh.forward_agent = true/config.ssh.forward_agent = true/g' Vagrantfile > Vagrantfile.tmp")
         local("mv Vagrantfile.tmp Vagrantfile")
 
     running_vms = local("VBoxManage list runningvms", capture=True)
@@ -144,7 +145,7 @@ def create_virtualenv():
                 print "\nAborting!"
                 return False
             removeapp()
-        sudo("virtualenv %s --distribute" % env.proj_name)
+        run("virtualenv %s --distribute" % env.proj_name)
 
 
 @roles('application')
@@ -210,19 +211,17 @@ def init_db():
 
 @roles('application')
 def init_git():
-    with project():
-        run("git init")
-        run("echo '.idea/' >> .gitignore")
-        run("echo 'last.commit' >> .gitignore")
-        run("echo 'gunicorn.pid' >> .gitignore")
-        run("git add .")
-        run("git commit -m'init'")
+    local("git init")
+    local("echo '.idea/' >> .gitignore")
+    local("echo 'last.commit' >> .gitignore")
+    local("echo 'gunicorn.pid' >> .gitignore")
+    local("git add .")
+    local("git commit -m'init'")
 
-        #TODO: We shouldn't assume unfuddle here
-        with settings(warn_only=True):
-            run("git remote add unfuddle %s" % env.repo_url)
-            run("git config remote.unfuddle.push refs/heads/master:refs/heads/master")
-        run("git push unfuddle master")
+    with settings(warn_only=True):
+        local("git remote add origin %s" % env.repo_url)
+        local("git config remote.origin.push refs/heads/master:refs/heads/master")
+    local("git push origin master")
 
 
 @task

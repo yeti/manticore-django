@@ -1,3 +1,4 @@
+import sys
 from genericpath import exists
 from importlib import import_module
 from fabric.context_managers import cd, settings
@@ -94,6 +95,9 @@ def clone(repo_url=''):
     # Check to see if this project is ready for vagrant deployment - if not we'll 'upgrade' it
     if not exists("temp/deploy/vagrant_settings.py"):
         local("cp %s/vagrant_settings.py temp/deploy/vagrant_settings.py" % os.path.dirname(os.path.realpath(__file__)))
+
+    # Add the current directory to our sys path so we can import fabric_settings
+    sys.path.append(os.getcwd())
 
     #TODO: Auto add fabric_settings.py if it doesn't exist
     fabric_settings = import_module("temp.fabric_settings", "temp")
@@ -258,6 +262,7 @@ def pip_install():
 def pip_install_task():
     with virtualenv():
         sudo("pip install -r %s/%s" % (env.proj_path, env.reqs_path))
+
 
 class Helper:
     def add_line_to_list(self, read_file, write_file, list, insert_line):

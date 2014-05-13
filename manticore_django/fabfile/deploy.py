@@ -1458,6 +1458,7 @@ def vagrant(show_info=False):
     """
 
     env.mode = "vagrant"
+    env.forward_agent = True
     load_environment(env.settings[env.mode], show_info)
     env.manage = "%s/bin/python /vagrant/%s/manage.py" % (env.venv_path, env.proj_name)
 

@@ -33,6 +33,9 @@ def new(project_name='', app_name='', db_password='', repo_url=''):
     if not create_vagrantfile():
         return False
 
+    # Add the current directory to our sys path so we can import fabric_settings
+    sys.path.append(os.getcwd())
+
     # Create a fake settings file for access to vagrant
     local("cp %s/fabric_settings.py fabric_settings.py" % os.path.dirname(os.path.realpath(__file__)))
     env.settings = __import__("fabric_settings", globals(), locals(), [], 0).FABRIC
@@ -128,6 +131,8 @@ def create_vagrantfile():
     else:
         local("vagrant init wheezy https://dl.dropboxusercontent.com/u/197673519/debian-7.2.0.box")
         local("sed 's/# config.vm.network :forwarded_port, guest: 80, host: 8080/config.vm.network :forwarded_port, guest: 8000, host: 8000/g' Vagrantfile > Vagrantfile.tmp")
+        local("mv Vagrantfile.tmp Vagrantfile")
+
         local("sed 's/# config.ssh.forward_agent = true/config.ssh.forward_agent = true/g' Vagrantfile > Vagrantfile.tmp")
         local("mv Vagrantfile.tmp Vagrantfile")
 

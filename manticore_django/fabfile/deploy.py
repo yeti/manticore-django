@@ -86,16 +86,23 @@ def load_environment(conf, show_info):
     env.venv_path = "%s/%s" % (env.venv_home, env.proj_name)
     env.proj_dirname = "project"
     env.proj_path = conf.get("PROJECT_PATH", "%s/%s" % (env.venv_path, env.proj_dirname))
-    env.manage = "%s/bin/python %s/project/manage.py" % (env.venv_path,
-                                                         env.venv_path)
-    env.live_host = conf.get("LIVE_HOSTNAME", get_host(conf.get("APPLICATION_HOSTS")[0]) if conf.get("APPLICATION_HOSTS") else None)
+    env.manage = "%s/bin/python %s/project/manage.py" % (env.venv_path, env.venv_path)
+
+    env.domains = conf.get("DOMAINS", [conf.get("LIVE_HOSTNAME", env.application_hosts[0])])
+    env.domains_nginx = " ".join(env.domains)
+    env.domains_python = ", ".join(["'%s'" % s for s in env.domains])
+    env.ssl_disabled = "#" if len(env.domains) > 1 or conf.get("SSL_DISABLED", True) else ""
     env.sitename = conf.get("SITENAME", "Default")
     env.repo_url = conf.get("REPO_URL", "")
+    env.repo_branch = conf.get("REPO_BRANCH", "master")
     env.git = True
     env.reqs_path = conf.get("REQUIREMENTS_PATH", None)
     env.gunicorn_port = conf.get("GUNICORN_PORT", 8000)
     env.locale = conf.get("LOCALE", "en_US.UTF-8")
     env.linux_distro = conf.get("LINUX_DISTRO", "wheezy")
+
+    env.secret_key = conf.get("SECRET_KEY", "")
+    env.nevercache_key = conf.get("NEVERCACHE_KEY", "")
 
     env.deploy_my_public_key = conf.get("DEPLOY_MY_PUBLIC_KEY")
     env.deploy_ssh_key_path = conf.get("DEPLOY_SSH_KEY_PATH")
@@ -104,13 +111,11 @@ def load_environment(conf, show_info):
     env.install_extras = conf.get("INSTALL_EXTRAS", [])
     env.db_extensions = conf.get("DB_EXTENSIONS", [])
 
-
     # safety check the db password
     if not check_db_password(env.db_pass):
         abort("The database password contains disallowed special characters.")
 
-if sys.argv[0].split(os.sep)[-1] in ("fab",             # POSIX
-                                     "fab-script.py"):  # Windows
+if sys.argv[0].split(os.sep)[-1] in ("fab", "fab-script.py"):
     # Ensure we import settings from the current dir
     try:
         global_conf = {}
@@ -523,6 +528,9 @@ def upload_template_and_reload(name):
     """
     template = get_templates()[name]
     local_path = template["local_path"]
+    if not os.path.exists(local_path):
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        local_path = os.path.join(project_root, local_path)
     remote_path = template["remote_path"]
     reload_command = template.get("reload_command")
     owner = template.get("owner")
@@ -821,7 +829,7 @@ def createapp1():
             removeapp()
         run("virtualenv %s --distribute" % env.proj_name)
         vcs = "git" if env.git else "hg"
-        run("git clone %s %s" % (env.repo_url, env.proj_path))
+        run("git clone -b %s %s %s" % (env.repo_branch, env.repo_url, env.proj_path))
         with project():
             run("git submodule init")
             run("git submodule update")
@@ -834,23 +842,24 @@ def createapp2():
     Continuation of create. Used if the database already exists. Upload certificate and site name.
     """
     # Set up SSL certificate.
-    conf_path = "/etc/nginx/conf"
-    if not exists(conf_path):
-        sudo("mkdir %s" % conf_path)
-    with cd(conf_path):
-        crt_file = env.proj_name + ".crt"
-        key_file = env.proj_name + ".key"
-        if not exists(crt_file) and not exists(key_file):
-            try:
-                crt_local, = glob(join("deploy", "*.crt"))
-                key_local, = glob(join("deploy", "*.key"))
-            except ValueError:
-                parts = (crt_file, key_file, env.live_host)
-                sudo("openssl req -new -x509 -nodes -out %s -keyout %s "
-                     "-subj '/CN=%s' -days 3650" % parts)
-            else:
-                upload_template(crt_local, crt_file, use_sudo=True)
-                upload_template(key_local, key_file, use_sudo=True)
+    if not env.ssl_disabled:
+        conf_path = "/etc/nginx/conf"
+        if not exists(conf_path):
+            sudo("mkdir %s" % conf_path)
+        with cd(conf_path):
+            crt_file = env.proj_name + ".crt"
+            key_file = env.proj_name + ".key"
+            if not exists(crt_file) and not exists(key_file):
+                try:
+                    crt_local, = glob(join("deploy", "*.crt"))
+                    key_local, = glob(join("deploy", "*.key"))
+                except ValueError:
+                    parts = (crt_file, key_file, env.domains[0])
+                    sudo("openssl req -new -x509 -nodes -out %s -keyout %s "
+                         "-subj '/CN=%s' -days 3650" % parts)
+                else:
+                    upload_template(crt_local, crt_file, use_sudo=True)
+                    upload_template(key_local, key_file, use_sudo=True)
 
     # Set up project.
     upload_template_and_reload("settings")
@@ -862,10 +871,11 @@ def createapp2():
         manage("createdb --noinput --nodata")
         python("from django.conf import settings;"
                "from django.contrib.sites.models import Site;"
-               "site, _ = Site.objects.get_or_create(id=settings.SITE_ID);"
-               "site.domain = '" + env.live_host + "';"
-               "site.name = '" + env.sitename.replace("'", "") + "';"
-               "site.save();")
+               "Site.objects.filter(id=settings.SITE_ID).update(domain='%s');"
+               % env.domains[0])
+        for domain in env.domains:
+            python("from django.contrib.sites.models import Site;"
+                   "Site.objects.get_or_create(domain='%s');" % domain)
         if env.admin_pass:
             pw = env.admin_pass
             user_py = ("from mezzanine.utils.models import get_user_model;"
@@ -923,8 +933,9 @@ def write_hba_conf():
 def createdb_master():
     # create virtual environment directory and project path within
     if not exists(env.venv_path):
-        prompt = raw_input("\nProject directory doesn't exist: %s\nWould you like "
-                           "to create it? (yes/no) " % env.venv_path)
+        prompt = raw_input("\nProject directory doesn't exist: %s"
+                           "\nWould you like to create it? (yes/no) "
+                           % env.venv_path)
         if prompt.lower() != "yes":
             print "\nAborting!"
             return False
@@ -1119,9 +1130,9 @@ def removedb():
     Removes all data from the database. USE WITH CAUTION.
     """
     with settings(warn_only=True):    
-        psql("DROP DATABASE %s;" % env.proj_name)
-        psql("DROP USER %s;" % env.proj_name)
-        psql("DROP USER replicator%s;" % env.proj_name)
+        psql("DROP DATABASE IF EXISTS %s;" % env.proj_name)
+        psql("DROP USER IF EXISTS %s;" % env.proj_name)
+        psql("DROP USER IF EXISTS replicator%s;" % env.proj_name)
 
     # Configure database server to listen to appropriate ports. Tested with Debian 6 and Postgres 9.2
     warn("TODO modify /etc/postgresql/9.2/main/pg_hba.conf")
@@ -1507,4 +1518,3 @@ def up(warn_on_duplicate_accounts=True):
     execute(copy_db_ssh_keys)
     if create(warn_on_duplicate_accounts):
         deploy()
-

@@ -13,9 +13,11 @@ FABRIC = {
         "PRIVATE_APPLICATION_HOSTS": ['127.0.0.1'],
         "DATABASE_HOSTS": ['127.0.0.1:2222'],
         "PRIVATE_DATABASE_HOSTS":['127.0.0.1'],
-        "LIVE_HOSTNAME": "127.0.0.1",
+        "DOMAINS": ["127.0.0.1"], # Host for public site.
         "DB_PASS": "vagrant", # Live database password
         "ADMIN_PASS": "vagrant", # Live admin user password
+        "SECRET_KEY": "DEV",
+        "NEVERCACHE_KEY": "DEV",
 
         # shared application settings
         "SITENAME": "Default",
@@ -26,6 +28,7 @@ FABRIC = {
         "GUNICORN_PORT": 8001, # Port gunicorn will listen on
         "LOCALE": "en_US.UTF-8", # Should end with ".UTF-8"
         "REPO_URL": "", # Git or Mercurial remote repo URL for the project
+        "REPO_BRANCH": "master",
         "LINUX_DISTRO": "wheezy",
     },
     "development": {
@@ -41,9 +44,11 @@ FABRIC = {
         # Yeti sandbox
         "APPLICATION_HOSTS": ['127.0.0.1'], # List of hosts to deploy to
         "DATABASE_HOSTS": ['127.0.0.1'],
-        "LIVE_HOSTNAME": "", # Host for public site.
+        "DOMAINS": ["127.0.0.1"], # Host for public site.
         "DB_PASS": "", # Live database password
         "ADMIN_PASS": "admin", # Live admin user password
+        "SECRET_KEY": "DEV",
+        "NEVERCACHE_KEY": "DEV",
 
         # shared application settings
         "SITENAME": "Default",
@@ -53,6 +58,7 @@ FABRIC = {
         "GUNICORN_PORT": 8001, # Port gunicorn will listen on
         "LOCALE": "en_US.UTF-8", # Should end with ".UTF-8"
         "REPO_URL": "", # Git or Mercurial remote repo URL for the project
+        "REPO_BRANCH": "develop",
         "LINUX_DISTRO": "wheezy",
     }
 }

@@ -1260,7 +1260,7 @@ def deployapp2(collect_static=True):
         last_commit = "git rev-parse HEAD" if git else "hg id -i"
         run("%s > last.commit" % last_commit)
         with update_changed_requirements():
-            run("git pull origin master -f" if git else "hg pull && hg up -C")
+            run("git pull origin {0} -f".format(env.repo_branch) if git else "hg pull && hg up -C")
         run("git submodule init")
         run("git submodule sync")
         run("git submodule update")

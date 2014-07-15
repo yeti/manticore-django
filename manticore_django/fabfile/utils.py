@@ -1,12 +1,10 @@
 from contextlib import contextmanager
 from functools import wraps
-import re
 from fabric.colors import green, blue, yellow, red
 from fabric.context_managers import cd, prefix, hide
 from fabric.decorators import task, roles
 from fabric.state import env
 from fabric.api import sudo as _sudo
-from fabric.api import run
 
 __author__ = 'rudy'
 

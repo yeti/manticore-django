@@ -3,7 +3,6 @@ import os
 from PIL import Image
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.db import models
-from _ssl import SSLError
 from manticore_django.manticore_django.utils import retry_cloudfiles
 
 

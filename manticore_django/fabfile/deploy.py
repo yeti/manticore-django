@@ -276,7 +276,7 @@ def modify_config_file(remote_path, settings=None, comment_char='#', setter_char
     with tempfile.NamedTemporaryFile(delete=True) as f:
 
         # Download the remote file into the temporary file
-        a = get(remote_path, f)
+        get(remote_path, f)
 
         # Rewind the file to the beginning
         f.file.seek(0)
@@ -828,7 +828,6 @@ def createapp1():
                 return False
             removeapp()
         run("virtualenv %s --distribute" % env.proj_name)
-        vcs = "git" if env.git else "hg"
         run("git clone -b %s %s %s" % (env.repo_branch, env.repo_url, env.proj_path))
         with project():
             run("git submodule init")

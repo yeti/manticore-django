@@ -19,13 +19,12 @@ class CoreModel(models.Model):
 # Requires the model to have one field to hold the original file and a constant called SIZES
 def resize_model_photos(sender, **kwargs):
     instance = kwargs['instance']
-    original_file_field_name = getattr(sender, "_original_file", "original_file")
+    original_file_field_name = getattr(sender, "original_file_name", "original_file")
 
     # If this is a video file, do nothing
     file_type = getattr(instance, "type", None)
-    if file_type:
-        if file_type == sender.TYPE_CHOICES.video:
-            return
+    if file_type and file_type == sender.TYPE_CHOICES.video:
+        return
 
     # Update fields is used when saving the photo so that we can short circuit an infinite loop with the signal
     if not kwargs['update_fields'] or not original_file_field_name in kwargs['update_fields']:

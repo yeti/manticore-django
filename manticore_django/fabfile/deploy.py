@@ -823,16 +823,14 @@ def createapp1():
         if exists(env.proj_name):
             prompt = raw_input("\nVirtualenv exists: %s\nWould you like "
                                "to replace it? (yes/no) " % env.proj_name)
-            if prompt.lower() != "yes":
-                print "\nAborting!"
-                return False
-            removeapp()
-        run("virtualenv %s --distribute" % env.proj_name)
-        vcs = "git" if env.git else "hg"
-        run("git clone -b %s %s %s" % (env.repo_branch, env.repo_url, env.proj_path))
-        with project():
-            run("git submodule init")
-            run("git submodule update")
+
+            if prompt.lower() == "yes":
+                removeapp()
+                run("virtualenv %s --distribute" % env.proj_name)
+                run("git clone -b %s %s %s" % (env.repo_branch, env.repo_url, env.proj_path))
+                with project():
+                    run("git submodule init")
+                    run("git submodule update")
 
 @task
 @roles('application','cron')
@@ -871,14 +869,20 @@ def createapp2():
         manage("createdb --noinput --nodata")
         python("from django.conf import settings;"
                "from django.contrib.sites.models import Site;"
+               "import sys;"
+               "sys.path.append(os.path.abspath('..'));"
                "Site.objects.filter(id=settings.SITE_ID).update(domain='%s');"
                % env.domains[0])
         for domain in env.domains:
             python("from django.contrib.sites.models import Site;"
+                   "import sys;"
+                   "sys.path.append(os.path.abspath('..'));"
                    "Site.objects.get_or_create(domain='%s');" % domain)
         if env.admin_pass:
             pw = env.admin_pass
             user_py = ("from mezzanine.utils.models import get_user_model;"
+                       "import sys;"
+                       "sys.path.append(os.path.abspath('..'));"
                        "User = get_user_model();"
                        "u, _ = User.objects.get_or_create(username='admin');"
                        "u.is_staff = u.is_superuser = True;"

@@ -3,7 +3,6 @@ import os
 from PIL import Image
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.db import models
-from _ssl import SSLError
 from manticore_django.manticore_django.utils import retry_cloudfiles
 
 
@@ -17,29 +16,38 @@ class CoreModel(models.Model):
         abstract = True
 
 
-# Requires the model to have one image field called original_photo and a constant called SIZES
+# Requires the model to have one field to hold the original file and a constant called SIZES
 def resize_model_photos(sender, **kwargs):
+    instance = kwargs['instance']
+    original_file_field_name = getattr(sender, "original_file_name", "original_file")
+
+    # If this is a video file, do nothing
+    file_type = getattr(instance, "type", None)
+    if file_type and file_type == sender.TYPE_CHOICES.video:
+        return
+
     # Update fields is used when saving the photo so that we can short circuit an infinite loop with the signal
-    if not kwargs['update_fields'] or not 'original_photo' in kwargs['update_fields']:
+    if not kwargs['update_fields'] or not original_file_field_name in kwargs['update_fields']:
         return
 
-    if not kwargs['instance'].original_photo:
+    original_file = getattr(instance, original_file_field_name)
+    if not original_file:
         for size_name, size in sender.SIZES.iteritems():
-            setattr(kwargs['instance'], size_name, '')
+            setattr(instance, size_name, '')
         return
 
-    processed = process_thumbnail(kwargs['instance'], sender.SIZES)
+    processed = process_thumbnail(instance, original_file, sender.SIZES)
     if processed:
-        kwargs['instance'].save()
+        instance.save()
 
 
-def process_thumbnail(instance, sizes, crop=False):
-    file = StringIO.StringIO(instance.original_photo.read())
+def process_thumbnail(instance, original_file, sizes, crop=False):
+    file = StringIO.StringIO(original_file.read())
     original_image = Image.open(file)  # open the image using PIL
 
     # pull a few variables out of that full path
-    filename = os.path.basename(instance.original_photo.name).rsplit('.', 1)[0]
-    extension = os.path.basename(instance.original_photo.name).rsplit('.', 1)[1]  # the file extension
+    filename = os.path.basename(original_file.name).rsplit('.', 1)[0]
+    extension = os.path.basename(original_file.name).rsplit('.', 1)[1]  # the file extension
 
     # If there is no extension found try jpg
     if extension == '':

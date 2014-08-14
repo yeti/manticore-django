@@ -276,7 +276,7 @@ def modify_config_file(remote_path, settings=None, comment_char='#', setter_char
     with tempfile.NamedTemporaryFile(delete=True) as f:
 
         # Download the remote file into the temporary file
-        a = get(remote_path, f)
+        get(remote_path, f)
 
         # Rewind the file to the beginning
         f.file.seek(0)
@@ -823,7 +823,6 @@ def createapp1():
         if exists(env.proj_name):
             prompt = raw_input("\nVirtualenv exists: %s\nWould you like "
                                "to replace it? (yes/no) " % env.proj_name)
-
             if prompt.lower() == "yes":
                 removeapp()
                 run("virtualenv %s --distribute" % env.proj_name)
@@ -1265,7 +1264,7 @@ def deployapp2(collect_static=True):
         last_commit = "git rev-parse HEAD" if git else "hg id -i"
         run("%s > last.commit" % last_commit)
         with update_changed_requirements():
-            run("git pull origin master -f" if git else "hg pull && hg up -C")
+            run("git pull origin {0} -f".format(env.repo_branch) if git else "hg pull && hg up -C")
         run("git submodule init")
         run("git submodule sync")
         run("git submodule update")

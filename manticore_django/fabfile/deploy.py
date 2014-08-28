@@ -863,9 +863,9 @@ def createapp2():
     with project():
         if env.reqs_path:
             pip("-r %s/%s" % (env.proj_path, env.reqs_path))
-        pip("gunicorn setproctitle south psycopg2 "
+        pip("gunicorn setproctitle psycopg2 "
             "django-compressor python-memcached")
-        manage("createdb --noinput --nodata")
+        manage("migrate")
         python("from django.conf import settings;"
                "from django.contrib.sites.models import Site;"
                "import sys;"

@@ -167,6 +167,7 @@ def create_project():
             sudo("mezzanine-project %s" % env.proj_name)
 
     with project():
+        pip("https://www.djangoproject.com/download/1.7c3/tarball/")
         sudo("pip freeze > requirements.txt")
 
         sudo("%s startapp %s" % (env.manage, env.app_name))
@@ -174,6 +175,7 @@ def create_project():
         get("settings.py", "remote_settings.py")
         Helper().add_line_to_list("remote_settings.py", "settings.py.tmp", "INSTALLED_APPS = (", '    "%s",' % env.app_name)
         put("settings.py.tmp", "settings.py", use_sudo=True)
+        sed("settings.py", "USE_SOUTH = True", "USE_SOUTH = False", use_sudo=True, backup="", shell=True)
         put("%s/vagrant_settings.py" % os.path.dirname(os.path.realpath(__file__)), "deploy/vagrant_settings.py", use_sudo=True)
         put("%s/celeryd.conf" % os.path.dirname(os.path.realpath(__file__)), "deploy/celeryd.conf", use_sudo=True)
 
@@ -214,7 +216,6 @@ def create_project():
 def init_db():
     with project():
         manage("syncdb --noinput")
-        manage("schemamigration %s --initial" % env.app_name)
         manage("migrate")
 
 

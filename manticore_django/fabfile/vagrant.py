@@ -167,7 +167,6 @@ def create_project():
             sudo("mezzanine-project %s" % env.proj_name)
 
     with project():
-        pip("https://www.djangoproject.com/download/1.7c3/tarball/")
         sudo("pip freeze > requirements.txt")
 
         sudo("%s startapp %s" % (env.manage, env.app_name))

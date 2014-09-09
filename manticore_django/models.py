@@ -4,6 +4,7 @@ from PIL import Image
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.db import models
 from manticore_django.manticore_django.utils import retry_cloudfiles
+from model_utils import Choices
 
 
 class CoreModel(models.Model):
@@ -14,6 +15,22 @@ class CoreModel(models.Model):
 
     class Meta:
         abstract = True
+
+
+class Media(CoreModel):
+    TYPE_CHOICES = Choices(
+        (0, 'image', 'Image'),
+        (1, 'video', 'Video')
+    )
+    type = models.PositiveSmallIntegerField(choices=TYPE_CHOICES, blank=True, null=True)
+    original_file = models.FileField(upload_to='media/original/', blank=True, null=True)
+    thumbnail = models.FileField(upload_to='media/thumbnail/', blank=True, null=True)
+    large_photo = models.FileField(upload_to='media/large_photo/', blank=True, null=True)
+    original_file_name = "original_file"
+
+    class Meta:
+        abstract = True
+
 
 
 # Requires the model to have one field to hold the original file and a constant called SIZES

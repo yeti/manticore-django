@@ -159,7 +159,7 @@ def create_virtualenv():
 
 @roles('application')
 def create_project():
-    pip("mezzanine")
+    pip("mezzanine pep8 pyflakes model_utils")
 
     with activate_venv():
         # /vagrant is the shared mounted folder between vagrant and your local filesystem

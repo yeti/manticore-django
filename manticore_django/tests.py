@@ -1,5 +1,6 @@
 from django.test import TestCase
 from mezzanine.utils.tests import run_pyflakes_for_package, _run_checker_for_package
+import settings
 
 
 class SyntaxTest(TestCase):
@@ -7,7 +8,7 @@ class SyntaxTest(TestCase):
         """
         Run pyflakes/pep8 across the code base to check for potential errors.
         """
-        packages = ['common', 'comps', 'discuss', 'rets', 'manticore_tastypie_urbanairship']
+        packages = settings.PACKAGES_TO_TEST
         warnings = []
         # Eventually should use flake8 instead so we can ignore specific lines via a comment
         for package in packages:

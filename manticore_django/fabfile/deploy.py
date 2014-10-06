@@ -153,6 +153,7 @@ templates = {
         "local_path": "deploy/supervisor.conf",
         "remote_path": "/etc/supervisor/conf.d/%(proj_name)s.conf",
         "reload_command": "supervisorctl reload",
+        "owner": "root",
     },
     "cron": {
         "local_path": "deploy/crontab",
@@ -164,6 +165,7 @@ templates = {
     "gunicorn": {
         "local_path": "deploy/gunicorn.conf.py.template",
         "remote_path": "%(proj_path)s/gunicorn.conf.py",
+        "owner": "root",
     },
     "settings": {
         "local_path": "deploy/%(mode)s_settings.py", # local task changes this filename
@@ -645,11 +647,15 @@ def static():
 
 @task
 @roles('application','cron')
-def manage(command):
+def manage(command, use_sudo=False):
     """
     Runs a Django management command.
     """
-    return run("%s %s" % (env.manage, command))
+    combined_command = "%s %s" % (env.manage, command)
+    if use_sudo:
+        return sudo(combined_command)
+    else:
+        return run(combined_command)
 
 
 @task
@@ -1259,17 +1265,17 @@ def deployapp2(collect_static=True):
     with project():
         static_dir = static()
         if exists(static_dir):
-            run("tar -cf last.tar %s" % static_dir)
+            sudo("tar -cf last.tar %s" % static_dir)
         git = env.git
         last_commit = "git rev-parse HEAD" if git else "hg id -i"
-        run("%s > last.commit" % last_commit)
+        sudo("%s > last.commit" % last_commit)
         with update_changed_requirements():
-            run("git pull origin {0} -f".format(env.repo_branch) if git else "hg pull && hg up -C")
-        run("git submodule init")
-        run("git submodule sync")
-        run("git submodule update")
+            sudo("git pull origin {0} -f".format(env.repo_branch) if git else "hg pull && hg up -C")
+        sudo("git submodule init")
+        sudo("git submodule sync")
+        sudo("git submodule update")
         if env.mode != "vagrant" and collect_static:
-            manage("collectstatic -v 0 --noinput")
+            manage("collectstatic -v 0 --noinput", True)
         manage("syncdb --noinput")
         manage("migrate --noinput")
     restartapp()

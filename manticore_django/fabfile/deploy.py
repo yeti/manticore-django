@@ -825,17 +825,28 @@ def create_prereq():
 @roles('application','cron')
 def createapp1():
     # Create virtualenv
+    # Create virtualenv
     with cd(env.venv_home):
-        if exists(env.proj_name):
+        create_virtual_env = False
+        if exists(env.venv_path):
+            # If virtual environment exists, prompt the user if they'd like to remove it
             prompt = raw_input("\nVirtualenv exists: %s\nWould you like "
                                "to replace it? (yes/no) " % env.proj_name)
             if prompt.lower() == "yes":
                 removeapp()
-                run("virtualenv %s --distribute" % env.proj_name)
-                run("git clone -b %s %s %s" % (env.repo_branch, env.repo_url, env.proj_path))
-                with project():
-                    run("git submodule init")
-                    run("git submodule update")
+                create_virtual_env = True
+        else:  # Else, the virtual environment doesn't exist and we need to create ite
+            create_virtual_env = True
+        
+        if create_virtual_env:
+            run("virtualenv %s --distribute" % env.proj_name)
+        
+        # If the project has not been cloned yet from git, we need to intialize it and it's submodules
+        if not exists(env.proj_path):
+            run("git clone -b %s %s %s" % (env.repo_branch, env.repo_url, env.proj_path))
+            with project():
+                run("git submodule init")
+                run("git submodule update")
 
 @task
 @roles('application','cron')
@@ -1270,10 +1281,10 @@ def deployapp2(collect_static=True):
         last_commit = "git rev-parse HEAD" if git else "hg id -i"
         sudo("%s > last.commit" % last_commit)
         with update_changed_requirements():
-            sudo("git pull origin {0} -f".format(env.repo_branch) if git else "hg pull && hg up -C")
-        sudo("git submodule init")
-        sudo("git submodule sync")
-        sudo("git submodule update")
+            run("git pull origin {0} -f".format(env.repo_branch) if git else "hg pull && hg up -C")
+        run("git submodule init")
+        run("git submodule sync")
+        run("git submodule update")
         if env.mode != "vagrant" and collect_static:
             manage("collectstatic -v 0 --noinput", True)
         manage("syncdb --noinput")

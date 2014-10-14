@@ -160,7 +160,7 @@ def create_virtualenv():
 
 @roles('application')
 def create_project():
-    pip("mezzanine")
+    pip("mezzanine pep8 pyflakes model_utils")
 
     with activate_venv():
         # /vagrant is the shared mounted folder between vagrant and your local filesystem
@@ -168,7 +168,6 @@ def create_project():
             sudo("mezzanine-project %s" % env.proj_name)
 
     with project():
-        pip("https://www.djangoproject.com/download/1.7c3/tarball/")
         sudo("pip freeze > requirements.txt")
 
         sudo("%s startapp %s" % (env.manage, env.app_name))

@@ -1,5 +1,6 @@
 from _ssl import SSLError
 from swiftclient import ClientException
+import importlib
 
 
 def retry_cloudfiles(method, *args):
@@ -18,3 +19,12 @@ def retry_cloudfiles(method, *args):
         # Try at max, 10 times before quitting
         if tries >= 10:
             done = True
+
+
+def get_class(path):
+    path_split = path.split(".")
+    module_path = ".".join(path_split[:-1])
+    class_name = path_split[-1]
+    module = importlib.import_module(module_path)
+    _class = getattr(module, class_name)
+    return _class

@@ -131,7 +131,7 @@ def create_vagrantfile():
     else:
         local("vagrant init wheezy https://dl.dropboxusercontent.com/u/197673519/debian-7.2.0.box")
         # TODO: `:forwarded_port` is now "forwarded_port" with new version of vagrant
-        local("sed 's/# config.vm.network :forwarded_port, guest: 80, host: 8080/config.vm.network :forwarded_port, guest: 8000, host: 8000/g' Vagrantfile > Vagrantfile.tmp")
+        local("sed 's/# config.vm.network \"forwarded_port\", guest: 80, host: 8080/config.vm.network \"forwarded_port\", guest: 8000, host: 8000/g' Vagrantfile > Vagrantfile.tmp")
         local("mv Vagrantfile.tmp Vagrantfile")
 
         local("sed 's/# config.ssh.forward_agent = true/config.ssh.forward_agent = true/g' Vagrantfile > Vagrantfile.tmp")

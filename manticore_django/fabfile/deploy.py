@@ -942,6 +942,7 @@ def write_postgres_conf():
         postgres_conf.append(("hot_standby", "on"))
 
     modify_config_file("/etc/postgresql/9.4/main/postgresql.conf", postgres_conf, use_sudo=True)
+    sudo("chown postgres /etc/postgresql/9.4/main/postgresql.conf")
 
 def write_hba_conf():
     client_list = [('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_application_hosts]
@@ -949,6 +950,7 @@ def write_hba_conf():
     client_list.extend([('host', 'replication', 'replicator%s' % env.proj_name, '%s/32' % client, 'trust') for client in env.private_database_hosts])
     client_list.append(('local', 'replication', 'postgres', 'trust'))
     modify_config_file('/etc/postgresql/9.4/main/pg_hba.conf', client_list, type="records", use_sudo=True)
+    sudo("chown postgres /etc/postgresql/9.4/main/pg_hba.conf")
 
 
 @roles("database")

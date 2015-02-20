@@ -93,6 +93,7 @@ def load_environment(conf, show_info):
     env.domains_python = ", ".join(["'%s'" % s for s in env.domains])
     env.ssl_disabled = "#" if len(env.domains) > 1 or conf.get("SSL_DISABLED", True) else ""
     env.redirect = "" if conf.get("REDIRECT", False) else "#"
+    env.compress = conf.get("COMPRESS", False)
     env.sitename = conf.get("SITENAME", "Default")
     env.repo_url = conf.get("REPO_URL", "")
     env.repo_branch = conf.get("REPO_BRANCH", "master")
@@ -1289,6 +1290,12 @@ def deployapp2(collect_static=True):
         run("git submodule update")
         if env.mode != "vagrant" and collect_static:
             manage("collectstatic -v 0 --noinput", True)
+
+            # TODO: move this to a task that runs locally instead of on all application/cron servers
+            if env.compress:
+                manage("compress")
+                manage("syncfiles -e'media/' --static")
+
         manage("syncdb --noinput")
         manage("migrate --noinput")
     restartapp()

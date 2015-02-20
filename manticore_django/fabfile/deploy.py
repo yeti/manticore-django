@@ -92,6 +92,7 @@ def load_environment(conf, show_info):
     env.domains_nginx = " ".join(env.domains)
     env.domains_python = ", ".join(["'%s'" % s for s in env.domains])
     env.ssl_disabled = "#" if len(env.domains) > 1 or conf.get("SSL_DISABLED", True) else ""
+    env.redirect = "" if conf.get("REDIRECT", False) else "#"
     env.sitename = conf.get("SITENAME", "Default")
     env.repo_url = conf.get("REPO_URL", "")
     env.repo_branch = conf.get("REPO_BRANCH", "master")

@@ -280,7 +280,7 @@ def modify_config_file(remote_path, settings=None, comment_char='#', setter_char
     with tempfile.NamedTemporaryFile(delete=True) as f:
 
         # Download the remote file into the temporary file
-        get(remote_path, f)
+        get(remote_path, f, use_sudo=use_sudo)
 
         # Rewind the file to the beginning
         f.file.seek(0)

@@ -92,6 +92,8 @@ def load_environment(conf, show_info):
     env.domains_nginx = " ".join(env.domains)
     env.domains_python = ", ".join(["'%s'" % s for s in env.domains])
     env.ssl_disabled = "#" if len(env.domains) > 1 or conf.get("SSL_DISABLED", True) else ""
+    env.redirect = "" if conf.get("REDIRECT", False) else "#"
+    env.compress = conf.get("COMPRESS", False)
     env.sitename = conf.get("SITENAME", "Default")
     env.repo_url = conf.get("REPO_URL", "")
     env.repo_branch = conf.get("REPO_BRANCH", "master")
@@ -278,7 +280,7 @@ def modify_config_file(remote_path, settings=None, comment_char='#', setter_char
     with tempfile.NamedTemporaryFile(delete=True) as f:
 
         # Download the remote file into the temporary file
-        get(remote_path, f)
+        get(remote_path, f, use_sudo=use_sudo)
 
         # Rewind the file to the beginning
         f.file.seek(0)
@@ -939,6 +941,7 @@ def write_postgres_conf():
         postgres_conf.append(("hot_standby", "on"))
 
     modify_config_file("/etc/postgresql/9.2/main/postgresql.conf", postgres_conf, use_sudo=True)
+    sudo("chown postgres /etc/postgresql/9.2/main/postgresql.conf")
 
 def write_hba_conf():
     client_list = [('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_application_hosts]
@@ -946,6 +949,7 @@ def write_hba_conf():
     client_list.extend([('host', 'replication', 'replicator%s' % env.proj_name, '%s/32' % client, 'trust') for client in env.private_database_hosts])
     client_list.append(('local', 'replication', 'postgres', 'trust'))
     modify_config_file('/etc/postgresql/9.2/main/pg_hba.conf', client_list, type="records", use_sudo=True)
+    sudo("chown postgres /etc/postgresql/9.2/main/pg_hba.conf")
 
 
 @roles("database")
@@ -1286,6 +1290,12 @@ def deployapp2(collect_static=True):
         run("git submodule update")
         if env.mode != "vagrant" and collect_static:
             manage("collectstatic -v 0 --noinput", True)
+
+            # TODO: move this to a task that runs locally instead of on all application/cron servers
+            if env.compress:
+                manage("compress")
+                manage("syncfiles -e'media/' --static")
+
         manage("syncdb --noinput")
         manage("migrate --noinput")
     restartapp()

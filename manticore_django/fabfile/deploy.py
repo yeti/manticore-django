@@ -102,6 +102,7 @@ def load_environment(conf, show_info):
     env.gunicorn_port = conf.get("GUNICORN_PORT", 8000)
     env.locale = conf.get("LOCALE", "en_US.UTF-8")
     env.linux_distro = conf.get("LINUX_DISTRO", "wheezy")
+    env.bower = conf.get("BOWER", False)
 
     env.secret_key = conf.get("SECRET_KEY", "")
     env.nevercache_key = conf.get("NEVERCACHE_KEY", "")
@@ -1289,6 +1290,10 @@ def deployapp2(collect_static=True):
         run("git submodule sync")
         run("git submodule update")
         if env.mode != "vagrant" and collect_static:
+            # If we're using bower, make sure we install our javascript files before collecting static and compressing
+            if env.bower:
+                run("bower install")
+
             manage("collectstatic -v 0 --noinput", True)
 
             # TODO: move this to a task that runs locally instead of on all application/cron servers

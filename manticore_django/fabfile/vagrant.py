@@ -102,16 +102,18 @@ def clone(repo_url=''):
     # Add the current directory to our sys path so we can import fabric_settings
     sys.path.append(os.getcwd())
 
+    os.chdir("temp")
+    sys.path.append(os.getcwd())
+
     #TODO: Auto add fabric_settings.py if it doesn't exist
-    fabric_settings = import_module("temp.fabric_settings", "temp")
+    # fabric_settings = import_module("fabric_settings")
+    fabric_settings = __import__("fabric_settings", globals(), locals(), [], 0)
 
     #TODO: Auto add vagrant to fabric_settings.py if it doesn't exist
     env.settings = fabric_settings.FABRIC
     if 'vagrant' not in env.settings:
         print 'Please set up "vagrant" mode in fabric_settings.py and rerun this command'
         return False
-
-    os.chdir("temp")
 
     # And we're ready to go
     up()

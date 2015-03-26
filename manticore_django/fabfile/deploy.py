@@ -802,10 +802,10 @@ def install():
 @parallel
 @roles('application', 'cron')
 def install_phantom_js():
-    sudo("wget https://phantomjs.googlecode.com/files/phantomjs-1.9.2-linux-x86_64.tar.bz2")
-    sudo("tar xvjf phantomjs-1.9.2-linux-x86_64.tar.bz2")
-    sudo("mv phantomjs-1.9.2-linux-x86_64 /usr/lib")
-    sudo("ln -s /usr/lib/phantomjs-1.9.2-linux-x86_64/bin/phantomjs /usr/bin/.")
+    sudo("wget https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-1.9.8-linux-x86_64.tar.bz2")
+    sudo("tar xvjf phantomjs-1.9.8-linux-x86_64.tar.bz2")
+    sudo("mv phantomjs-1.9.8-linux-x86_64 /usr/lib")
+    sudo("ln -s /usr/lib/phantomjs-1.9.8-linux-x86_64/bin/phantomjs /usr/bin/.")
 
 #########################
 # Create                #

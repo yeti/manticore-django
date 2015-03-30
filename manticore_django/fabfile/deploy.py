@@ -845,7 +845,16 @@ def createapp1():
         
         # If the project has not been cloned yet from git, we need to intialize it and it's submodules
         if not exists(env.proj_path):
-            run("git clone -b %s %s %s" % (env.repo_branch, env.repo_url, env.proj_path))
+            # If we have a deployed ssh key, use that for cloning from git
+            if env.deploy_ssh_key_path and env.deploy_ssh_key_path != "":
+                ssh_key_name = os.path.basename(env.deploy_ssh_key_path)
+                run("ssh-agent bash -c 'ssh-add ~/.ssh/{}; git clone -b {} {} {}'".format(ssh_key_name,
+                                                                                          env.repo_branch,
+                                                                                          env.repo_url,
+                                                                                          env.proj_path))
+            else:
+                run("git clone -b {} {} {}".format(env.repo_branch, env.repo_url, env.proj_path))
+
             with project():
                 run("git submodule init")
                 run("git submodule update")
@@ -1285,14 +1294,21 @@ def deployapp2(collect_static=True):
         last_commit = "git rev-parse HEAD" if git else "hg id -i"
         sudo("%s > last.commit" % last_commit)
         with update_changed_requirements():
-            run("git pull origin {0} -f".format(env.repo_branch) if git else "hg pull && hg up -C")
+            # If we have a deployed ssh key, use that for pulling from git
+            if env.deploy_ssh_key_path and env.deploy_ssh_key_path != "":
+                ssh_key_name = os.path.basename(env.deploy_ssh_key_path)
+                run("ssh-agent bash -c 'ssh-add ~/.ssh/{}; git pull origin {} -f'".format(ssh_key_name,
+                                                                                          env.repo_branch))
+            else:
+                run("git pull origin {} -f".format(env.repo_branch))
+
         run("git submodule init")
         run("git submodule sync")
         run("git submodule update")
         if env.mode != "vagrant" and collect_static:
             # If we're using bower, make sure we install our javascript files before collecting static and compressing
             if env.bower:
-                run("bower install")
+                run("bower install --allow-root")
 
             manage("collectstatic -v 0 --noinput", True)
 

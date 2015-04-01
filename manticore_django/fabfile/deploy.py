@@ -1368,6 +1368,13 @@ def deploy(skip_db=False, collect_static=True):
 
     return True
 
+@task
+@log_call
+@roles("application")
+def clear_cache():
+    python("from django.core.cache import cache;"
+           "cache.clear();")
+
 #########################
 # Backup and restore    #
 #########################

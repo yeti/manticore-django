@@ -1288,7 +1288,7 @@ def deployapp1_cron_templates():
 def deployapp2(collect_static=True):
     with project():
         static_dir = static()
-        if exists(static_dir):
+        if exists(static_dir) and collect_static:
             sudo("tar -cf last.tar %s" % static_dir)
         git = env.git
         last_commit = "git rev-parse HEAD" if git else "hg id -i"

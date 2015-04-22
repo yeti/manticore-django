@@ -1,9 +1,11 @@
 import StringIO
+from django.db.models.signals import pre_save
 import os
 from PIL import Image
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.db import models
 from manticore_django.manticore_django.utils import retry_cloudfiles
+from model_utils import Choices
 
 
 class CoreModel(models.Model):
@@ -16,32 +18,50 @@ class CoreModel(models.Model):
         abstract = True
 
 
-# Requires the model to have one field to hold the original file and a constant called SIZES
-def resize_model_photos(sender, **kwargs):
-    instance = kwargs['instance']
-    original_file_field_name = getattr(sender, "original_file_name", "original_file")
+class Media(CoreModel):
+    TYPE_CHOICES = Choices(
+        (0, 'image', 'Image'),
+        (1, 'video', 'Video')
+    )
+    media_type = models.PositiveSmallIntegerField(choices=TYPE_CHOICES, blank=True, null=True)
+    original_file = models.FileField(upload_to='media/original/', blank=True, null=True)
+    thumbnail = models.FileField(upload_to='media/thumbnail/', blank=True, null=True)
+    large_photo = models.FileField(upload_to='media/large_photo/', blank=True, null=True)
+    original_file_name = "original_file"
 
-    # If this is a video file, do nothing
-    file_type = getattr(instance, "type", None)
-    if file_type and file_type == sender.TYPE_CHOICES.video:
+    class Meta:
+        abstract = True
+
+
+def resize_model_photos(instance, force_insert, force_update):
+    """
+    Requires the model to have one field to hold the original file and a constant called SIZES
+    Expects the sender to have an attribute `original_file` or to define an alternate with `original_file_name`
+    """
+    # Without this check, the function is called one too many times and errors on the last call
+    if not force_insert and not force_update:
         return
 
-    # Update fields is used when saving the photo so that we can short circuit an infinite loop with the signal
-    if not kwargs['update_fields'] or not original_file_field_name in kwargs['update_fields']:
+    original_file_field_name = getattr(instance, "original_file_name", "original_file")
+
+    # If this is a video file, do nothing
+    file_type = getattr(instance, "media_type", None)
+    if file_type and file_type == instance.TYPE_CHOICES.video:
         return
 
     original_file = getattr(instance, original_file_field_name)
     if not original_file:
-        for size_name, size in sender.SIZES.iteritems():
+        for size_name, size in instance.SIZES.iteritems():
             setattr(instance, size_name, '')
         return
 
-    processed = process_thumbnail(instance, original_file, sender.SIZES)
-    if processed:
-        instance.save()
+    process_thumbnail(instance, original_file, instance.SIZES)
 
 
 def process_thumbnail(instance, original_file, sizes, crop=False):
+    """
+    Makes a smart thumbnail
+    """
     file = StringIO.StringIO(original_file.read())
     original_image = Image.open(file)  # open the image using PIL
 

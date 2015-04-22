@@ -92,6 +92,8 @@ def load_environment(conf, show_info):
     env.domains_nginx = " ".join(env.domains)
     env.domains_python = ", ".join(["'%s'" % s for s in env.domains])
     env.ssl_disabled = "#" if len(env.domains) > 1 or conf.get("SSL_DISABLED", True) else ""
+    env.redirect = "" if conf.get("REDIRECT", False) else "#"
+    env.compress = conf.get("COMPRESS", False)
     env.sitename = conf.get("SITENAME", "Default")
     env.repo_url = conf.get("REPO_URL", "")
     env.repo_branch = conf.get("REPO_BRANCH", "master")
@@ -100,6 +102,7 @@ def load_environment(conf, show_info):
     env.gunicorn_port = conf.get("GUNICORN_PORT", 8000)
     env.locale = conf.get("LOCALE", "en_US.UTF-8")
     env.linux_distro = conf.get("LINUX_DISTRO", "wheezy")
+    env.bower = conf.get("BOWER", False)
 
     env.secret_key = conf.get("SECRET_KEY", "")
     env.nevercache_key = conf.get("NEVERCACHE_KEY", "")
@@ -278,7 +281,7 @@ def modify_config_file(remote_path, settings=None, comment_char='#', setter_char
     with tempfile.NamedTemporaryFile(delete=True) as f:
 
         # Download the remote file into the temporary file
-        get(remote_path, f)
+        get(remote_path, f, use_sudo=use_sudo)
 
         # Rewind the file to the beginning
         f.file.seek(0)
@@ -628,7 +631,7 @@ def python(code, show=True):
     """
     Runs Python code in the project's virtual environment, with Django loaded.
     """
-    setup = "import os; os.environ[\'DJANGO_SETTINGS_MODULE\']=\'settings\';"
+    setup = "import os; os.environ[\'DJANGO_SETTINGS_MODULE\']=\'settings\'; import django; django.setup();"
     full_code = 'python -c "%s%s"' % (setup, code.replace("`", "\\\`"))
     with project():
         result = run(full_code, show=False)
@@ -799,10 +802,10 @@ def install():
 @parallel
 @roles('application', 'cron')
 def install_phantom_js():
-    sudo("wget https://phantomjs.googlecode.com/files/phantomjs-1.9.2-linux-x86_64.tar.bz2")
-    sudo("tar xvjf phantomjs-1.9.2-linux-x86_64.tar.bz2")
-    sudo("mv phantomjs-1.9.2-linux-x86_64 /usr/lib")
-    sudo("ln -s /usr/lib/phantomjs-1.9.2-linux-x86_64/bin/phantomjs /usr/bin/.")
+    sudo("wget https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-1.9.8-linux-x86_64.tar.bz2")
+    sudo("tar xvjf phantomjs-1.9.8-linux-x86_64.tar.bz2")
+    sudo("mv phantomjs-1.9.8-linux-x86_64 /usr/lib")
+    sudo("ln -s /usr/lib/phantomjs-1.9.8-linux-x86_64/bin/phantomjs /usr/bin/.")
 
 #########################
 # Create                #
@@ -825,7 +828,6 @@ def create_prereq():
 @roles('application','cron')
 def createapp1():
     # Create virtualenv
-    # Create virtualenv
     with cd(env.venv_home):
         create_virtual_env = False
         if exists(env.venv_path):
@@ -843,7 +845,16 @@ def createapp1():
         
         # If the project has not been cloned yet from git, we need to intialize it and it's submodules
         if not exists(env.proj_path):
-            run("git clone -b %s %s %s" % (env.repo_branch, env.repo_url, env.proj_path))
+            # If we have a deployed ssh key, use that for cloning from git
+            if env.deploy_ssh_key_path and env.deploy_ssh_key_path != "":
+                ssh_key_name = os.path.basename(env.deploy_ssh_key_path)
+                run("ssh-agent bash -c 'ssh-add ~/.ssh/{}; git clone -b {} {} {}'".format(ssh_key_name,
+                                                                                          env.repo_branch,
+                                                                                          env.repo_url,
+                                                                                          env.proj_path))
+            else:
+                run("git clone -b {} {} {}".format(env.repo_branch, env.repo_url, env.proj_path))
+
             with project():
                 run("git submodule init")
                 run("git submodule update")
@@ -880,9 +891,9 @@ def createapp2():
     with project():
         if env.reqs_path:
             pip("-r %s/%s" % (env.proj_path, env.reqs_path))
-        pip("gunicorn setproctitle south psycopg2 "
+        pip("gunicorn setproctitle psycopg2 "
             "django-compressor python-memcached")
-        manage("createdb --noinput --nodata")
+        manage("migrate --noinput")
         python("from django.conf import settings;"
                "from django.contrib.sites.models import Site;"
                "import sys;"
@@ -940,6 +951,7 @@ def write_postgres_conf():
         postgres_conf.append(("hot_standby", "on"))
 
     modify_config_file("/etc/postgresql/9.2/main/postgresql.conf", postgres_conf, use_sudo=True)
+    sudo("chown postgres /etc/postgresql/9.2/main/postgresql.conf")
 
 def write_hba_conf():
     client_list = [('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_application_hosts]
@@ -947,6 +959,7 @@ def write_hba_conf():
     client_list.extend([('host', 'replication', 'replicator%s' % env.proj_name, '%s/32' % client, 'trust') for client in env.private_database_hosts])
     client_list.append(('local', 'replication', 'postgres', 'trust'))
     modify_config_file('/etc/postgresql/9.2/main/pg_hba.conf', client_list, type="records", use_sudo=True)
+    sudo("chown postgres /etc/postgresql/9.2/main/pg_hba.conf")
 
 
 @roles("database")
@@ -1275,18 +1288,35 @@ def deployapp1_cron_templates():
 def deployapp2(collect_static=True):
     with project():
         static_dir = static()
-        if exists(static_dir):
+        if exists(static_dir) and collect_static:
             sudo("tar -cf last.tar %s" % static_dir)
         git = env.git
         last_commit = "git rev-parse HEAD" if git else "hg id -i"
         sudo("%s > last.commit" % last_commit)
         with update_changed_requirements():
-            run("git pull origin {0} -f".format(env.repo_branch) if git else "hg pull && hg up -C")
+            # If we have a deployed ssh key, use that for pulling from git
+            if env.deploy_ssh_key_path and env.deploy_ssh_key_path != "":
+                ssh_key_name = os.path.basename(env.deploy_ssh_key_path)
+                run("ssh-agent bash -c 'ssh-add ~/.ssh/{}; git pull origin {} -f'".format(ssh_key_name,
+                                                                                          env.repo_branch))
+            else:
+                run("git pull origin {} -f".format(env.repo_branch))
+
         run("git submodule init")
         run("git submodule sync")
         run("git submodule update")
         if env.mode != "vagrant" and collect_static:
+            # If we're using bower, make sure we install our javascript files before collecting static and compressing
+            if env.bower:
+                run("bower install --allow-root")
+
             manage("collectstatic -v 0 --noinput", True)
+
+            # TODO: move this to a task that runs locally instead of on all application/cron servers
+            if env.compress:
+                manage("compress")
+                manage("syncfiles -e'media/' --static")
+
         manage("syncdb --noinput")
         manage("migrate --noinput")
     restartapp()
@@ -1337,6 +1367,13 @@ def deploy(skip_db=False, collect_static=True):
     execute(deployapp2, collect_static=collect_static)
 
     return True
+
+@task
+@log_call
+@roles("application")
+def clear_cache():
+    python("from django.core.cache import cache;"
+           "cache.clear();")
 
 #########################
 # Backup and restore    #

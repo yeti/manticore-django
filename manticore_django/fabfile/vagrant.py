@@ -102,16 +102,18 @@ def clone(repo_url=''):
     # Add the current directory to our sys path so we can import fabric_settings
     sys.path.append(os.getcwd())
 
+    os.chdir("temp")
+    sys.path.append(os.getcwd())
+
     #TODO: Auto add fabric_settings.py if it doesn't exist
-    fabric_settings = import_module("temp.fabric_settings", "temp")
+    # fabric_settings = import_module("fabric_settings")
+    fabric_settings = __import__("fabric_settings", globals(), locals(), [], 0)
 
     #TODO: Auto add vagrant to fabric_settings.py if it doesn't exist
     env.settings = fabric_settings.FABRIC
     if 'vagrant' not in env.settings:
         print 'Please set up "vagrant" mode in fabric_settings.py and rerun this command'
         return False
-
-    os.chdir("temp")
 
     # And we're ready to go
     up()
@@ -131,7 +133,7 @@ def create_vagrantfile():
     else:
         local("vagrant init wheezy https://dl.dropboxusercontent.com/u/197673519/debian-7.2.0.box")
         # TODO: `:forwarded_port` is now "forwarded_port" with new version of vagrant
-        local("sed 's/# config.vm.network :forwarded_port, guest: 80, host: 8080/config.vm.network :forwarded_port, guest: 8000, host: 8000/g' Vagrantfile > Vagrantfile.tmp")
+        local("sed 's/# config.vm.network \"forwarded_port\", guest: 80, host: 8080/config.vm.network \"forwarded_port\", guest: 8000, host: 8000/g' Vagrantfile > Vagrantfile.tmp")
         local("mv Vagrantfile.tmp Vagrantfile")
 
         local("sed 's/# config.ssh.forward_agent = true/config.ssh.forward_agent = true/g' Vagrantfile > Vagrantfile.tmp")
@@ -160,7 +162,7 @@ def create_virtualenv():
 
 @roles('application')
 def create_project():
-    pip("mezzanine")
+    pip("django mezzanine pep8 pyflakes django-model-utils")
 
     with activate_venv():
         # /vagrant is the shared mounted folder between vagrant and your local filesystem
@@ -175,6 +177,7 @@ def create_project():
         get("settings.py", "remote_settings.py")
         Helper().add_line_to_list("remote_settings.py", "settings.py.tmp", "INSTALLED_APPS = (", '    "%s",' % env.app_name)
         put("settings.py.tmp", "settings.py", use_sudo=True)
+        sed("settings.py", "USE_SOUTH = True", "USE_SOUTH = False", use_sudo=True, backup="", shell=True)
         put("%s/vagrant_settings.py" % os.path.dirname(os.path.realpath(__file__)), "deploy/vagrant_settings.py", use_sudo=True)
         put("%s/celeryd.conf" % os.path.dirname(os.path.realpath(__file__)), "deploy/celeryd.conf", use_sudo=True)
 
@@ -215,7 +218,6 @@ def create_project():
 def init_db():
     with project():
         manage("syncdb --noinput")
-        manage("schemamigration %s --initial" % env.app_name)
         manage("migrate")
 
 

@@ -1208,7 +1208,7 @@ def restartapp():
         if env.mode != "vagrant": # gunicorn is turned off by local task
             sudo("supervisorctl start %s:gunicorn_%s" % start_args)
 
-    if check_requirements_file("celery"):
+    if env.mode != "vagrant" and check_requirements_file("celery"):
         sudo("supervisorctl restart celery_%s" % env.proj_name)
 
 @task

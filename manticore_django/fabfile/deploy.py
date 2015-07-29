@@ -99,7 +99,7 @@ def load_environment(conf, show_info):
     env.reqs_path = conf.get("REQUIREMENTS_PATH", None)
     env.gunicorn_port = conf.get("GUNICORN_PORT", 8000)
     env.locale = conf.get("LOCALE", "en_US.UTF-8")
-    env.linux_distro = conf.get("LINUX_DISTRO", "jessie")
+    env.linux_distro = conf.get("LINUX_DISTRO", "wheezy")
 
     env.secret_key = conf.get("SECRET_KEY", "")
     env.nevercache_key = conf.get("NEVERCACHE_KEY", "")
@@ -760,12 +760,10 @@ def installapp():
 @parallel
 @roles('database','db_slave')
 def installdb():
-    append("/etc/apt/sources.list", StringIO("deb http://ftp.de.debian.org/debian squeeze main"), use_sudo=True)
-    append("/etc/apt/sources.list", StringIO("deb http://ftp.de.debian.org/debian jessie main"), use_sudo=True)
     put(StringIO("deb http://apt.postgresql.org/pub/repos/apt/ %s-pgdg main" % env.linux_distro), "/etc/apt/sources.list.d/pgdg.list", use_sudo=True)
     sudo("wget --quiet -O - http://apt.postgresql.org/pub/repos/apt/ACCC4CF8.asc | sudo apt-key add -")
     sudo("apt-get update")
-    apt("libssl1.0.0 postgresql-9.4 postgresql-contrib-9.4 bzip2 rsync") # bzip2 for compression
+    apt("postgresql-9.2 postgresql-contrib-9.2 bzip2 rsync")  # bzip2 for compression
 
 
 @task
@@ -932,7 +930,7 @@ def write_postgres_conf():
 
     if host_index < len(env.private_database_hosts) - 1: # for every host less than the last one, configure cascading replication
         postgres_conf.extend([("archive_mode", "on"),
-                              ("archive_command", "'rsync -aq -e ssh %p postgres@" + env.private_database_hosts[host_index + 1] + ":/var/lib/postgresql/9.4/archive/%f'"),
+                              ("archive_command", "'rsync -aq -e ssh %p postgres@" + env.private_database_hosts[host_index + 1] + ":/var/lib/postgresql/9.2/archive/%f'"),
                               ("archive_timeout", "3600"),
                               ])
     else:
@@ -941,16 +939,16 @@ def write_postgres_conf():
     if host_index > 0: # modifying a slave database
         postgres_conf.append(("hot_standby", "on"))
 
-    modify_config_file("/etc/postgresql/9.4/main/postgresql.conf", postgres_conf, use_sudo=True)
-    sudo("chown postgres /etc/postgresql/9.4/main/postgresql.conf")
+    modify_config_file("/etc/postgresql/9.2/main/postgresql.conf", postgres_conf, use_sudo=True)
+    sudo("chown postgres /etc/postgresql/9.2/main/postgresql.conf")
 
 def write_hba_conf():
     client_list = [('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_application_hosts]
     client_list.extend([('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_cron_hosts if client not in env.private_application_hosts])
     client_list.extend([('host', 'replication', 'replicator%s' % env.proj_name, '%s/32' % client, 'trust') for client in env.private_database_hosts])
     client_list.append(('local', 'replication', 'postgres', 'trust'))
-    modify_config_file('/etc/postgresql/9.4/main/pg_hba.conf', client_list, type="records", use_sudo=True)
-    sudo("chown postgres /etc/postgresql/9.4/main/pg_hba.conf")
+    modify_config_file('/etc/postgresql/9.2/main/pg_hba.conf', client_list, type="records", use_sudo=True)
+    sudo("chown postgres /etc/postgresql/9.2/main/pg_hba.conf")
 
 
 @roles("database")
@@ -970,7 +968,7 @@ def createdb_master():
     write_hba_conf()
     # Configure permissions for application servers
     with settings(warn_only=True):
-        sudo("rm /var/lib/postgresql/9.4/main/recovery.conf") # erase all settings in the replication conf
+        sudo("rm /var/lib/postgresql/9.2/main/recovery.conf") # erase all settings in the replication conf
 
     restartdb()
 
@@ -1002,24 +1000,24 @@ def createdb_slave():
     put("/var/tmp/pg_basebackup_%s.tar.bz2" % env.proj_name, "/var/tmp/pg_basebackup_%s.tar.bz2" % env.proj_name)
 
     # Remove old archive directory
-    with cd("/var/lib/postgresql/9.4/"):
+    with cd("/var/lib/postgresql/9.2/"):
         with settings(warn_only=True):
             run("rm -rf archive")
-        sudo("mkdir -p /var/lib/postgresql/9.4/archive")
-        sudo("chown postgres /var/lib/postgresql/9.4/archive")
+        sudo("mkdir -p /var/lib/postgresql/9.2/archive")
+        sudo("chown postgres /var/lib/postgresql/9.2/archive")
 
-    with cd("/var/lib/postgresql/9.4/main/"):
+    with cd("/var/lib/postgresql/9.2/main/"):
         run("rm -rf *")
         run("tar -xjvf /var/tmp/pg_basebackup_%s.tar.bz2" % env.proj_name)
-        sudo("chown -R postgres:postgres /var/lib/postgresql/9.4/main")
+        sudo("chown -R postgres:postgres /var/lib/postgresql/9.2/main")
 
     # Configure recovery for slave
     put(StringIO("standby_mode = 'on'\n"
                  "primary_conninfo = 'host=" + env.private_database_hosts[host_index-1] + " port=5432 user=replicator" + env.proj_name + "'\n"
                  "trigger_file = '/tmp/pg_failover_trigger'\n"
-                 "restore_command = 'cp /var/lib/postgresql/9.4/archive/%f %p'\n"
-                 "archive_cleanup_command = '/usr/lib/postgresql/9.4/bin/pg_archivecleanup /var/lib/postgresql/9.4/archive/ %r'\n"
-                 ), "/var/lib/postgresql/9.4/main/recovery.conf") # erase all settings in the replication conf, or create the file as needed
+                 "restore_command = 'cp /var/lib/postgresql/9.2/archive/%f %p'\n"
+                 "archive_cleanup_command = '/usr/lib/postgresql/9.2/bin/pg_archivecleanup /var/lib/postgresql/9.2/archive/ %r'\n"
+                 ), "/var/lib/postgresql/9.2/main/recovery.conf") # erase all settings in the replication conf, or create the file as needed
 
     sudo("/etc/init.d/postgresql start")
 
@@ -1082,11 +1080,11 @@ def upgradedb():
     backupdb()
     installdb()
     sudo("/etc/init.d/postgresql stop")
-    run("su - postgres -c \"/usr/lib/postgresql/9.4/bin/pg_upgrade -u postgres -b %s -B %s -d %s -D %s -o '-D %s' -O '-D %s'\""
-        % ("/usr/lib/postgresql/8.4/bin/","/usr/lib/postgresql/9.4/bin/","/var/lib/postgresql/8.4/main/","/var/lib/postgresql/9.4/main/","/etc/postgresql/8.4/main/","/etc/postgresql/9.4/main/"))
+    run("su - postgres -c \"/usr/lib/postgresql/9.2/bin/pg_upgrade -u postgres -b %s -B %s -d %s -D %s -o '-D %s' -O '-D %s'\""
+        % ("/usr/lib/postgresql/8.4/bin/","/usr/lib/postgresql/9.2/bin/","/var/lib/postgresql/8.4/main/","/var/lib/postgresql/9.2/main/","/etc/postgresql/8.4/main/","/etc/postgresql/9.2/main/"))
     sudo("apt-get remove postgresql-8.4")
     sudo("rm /usr/lib/postgresql/8.4/bin/*") # remove old database version to prevent conflict in running postgresql commands
-    apt("postgresql-9.4")
+    apt("postgresql-9.2")
     sudo("/etc/init.d/postgresql start")
     createdb_master()
 
@@ -1159,8 +1157,8 @@ def removedb():
         psql("DROP USER IF EXISTS replicator%s;" % env.proj_name)
 
     # Configure database server to listen to appropriate ports. Tested with Debian 6 and Postgres 9.2
-    warn("TODO modify /etc/postgresql/9.4/main/pg_hba.conf")
-    warn("TODO modify /etc/postgresql/9.4/main/postgresql.conf")
+    warn("TODO modify /etc/postgresql/9.2/main/pg_hba.conf")
+    warn("TODO modify /etc/postgresql/9.2/main/postgresql.conf")
 
 @task
 @roles("application","cron")
@@ -1482,7 +1480,7 @@ def locales():
 @log_call
 @roles("database","db_slave")
 def fix_db_permissions():
-    sudo("chmod o+r /etc/postgresql/9.4/main/pg_hba.conf")
+    sudo("chmod o+r /etc/postgresql/9.2/main/pg_hba.conf")
 
 
 @task

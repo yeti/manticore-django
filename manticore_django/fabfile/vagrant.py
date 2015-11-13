@@ -174,7 +174,7 @@ def create_project():
 
         sudo("%s startapp %s" % (env.manage, env.app_name))
 
-        get("settings.py", "remote_settings.py")
+        get(("%s/settings.py" % env.proj_name), "remote_settings.py")
         Helper().add_line_to_list("remote_settings.py", "settings.py.tmp", "INSTALLED_APPS = (", '    "%s",' % env.app_name)
         put("settings.py.tmp", "settings.py", use_sudo=True)
         sed("settings.py", "USE_SOUTH = True", "USE_SOUTH = False", use_sudo=True, backup="", shell=True)

@@ -18,13 +18,17 @@ __author__ = 'rudy'
 # Assumes you're running this in your new project's folder already
 @task
 @log_call
-def new(project_name='', app_name='', db_password='', repo_url=''):
+def new(project_name='', app_name='', db_password='', repo_url='', is_new=''):
     if len(project_name) == 0 or len(app_name) == 0 or len(db_password) == 0 or len(repo_url) == 0:
-        print "Usage: fab new:<project_name>,<app_name>,<db_password>,<repo_url>"
+        print "Usage: fab new:<project_name>,<app_name>,<db_password>,<repo_url>,<is_new>"
         print ""
         print "Common usage:"
         print "            <project_name> should be different than <app_name>"
         return
+
+    # triggers usage of the new django file-structure
+    if is_new and is_new == 'True':
+        is_new = True
 
     # ensure that project_name and app_name are different
     if project_name == app_name and not confirm("Your app_name is the same as the project_name. They should be different. Continue?"):
@@ -61,7 +65,7 @@ def new(project_name='', app_name='', db_password='', repo_url=''):
     # Set up a virtualenv and mezzanine project
     execute(create_prereq)
     execute(create_virtualenv)
-    execute(create_project)
+    execute(create_project, is_new=is_new)
 
     # Remove temp settings and change local working path permanently into project folder so we can copy deploy templates
     local("rm fabric_settings.py fabric_settings.pyc")
@@ -69,7 +73,7 @@ def new(project_name='', app_name='', db_password='', repo_url=''):
 
     # Finish setting up the database and copy over appropriate templates
     createdb(True)
-    execute(createapp2)
+    execute(createapp2, is_new=is_new)
     execute(create_rabbit, True)
     execute(init_db)
     execute(init_git)
@@ -161,7 +165,7 @@ def create_virtualenv():
 
 
 @roles('application')
-def create_project():
+def create_project(is_new=False):
     pip("django mezzanine pep8 pyflakes django-model-utils")
 
     with activate_venv():
@@ -174,7 +178,11 @@ def create_project():
 
         sudo("%s startapp %s" % (env.manage, env.app_name))
 
-        get(("%s/settings.py" % env.proj_name), "remote_settings.py")
+        settings_path = "settings.py"
+        if is_new:
+            settings_path = "{}/{}".format(env.proj_name, settings_path)
+
+        get(settings_path, "remote_settings.py")
         Helper().add_line_to_list("remote_settings.py", "settings.py.tmp", "INSTALLED_APPS = (", '    "%s",' % env.app_name)
         put("settings.py.tmp", "settings.py", use_sudo=True)
         sed("settings.py", "USE_SOUTH = True", "USE_SOUTH = False", use_sudo=True, backup="", shell=True)

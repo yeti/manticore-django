@@ -627,11 +627,13 @@ def restore(filename):
 
 @task
 @roles('application','cron')
-def python(code, show=True):
+def python(code, show=True, is_new=False):
     """
     Runs Python code in the project's virtual environment, with Django loaded.
     """
-    setup = "import os; os.environ[\'DJANGO_SETTINGS_MODULE\']=\'settings\'; import django; django.setup();"
+    setup_template = "import os; os.environ[\'DJANGO_SETTINGS_MODULE\']=\'{}settings\'; import django; django.setup();"
+    setup = setup_template.format(''.join(('', env.proj_name)) if is_new else '')
+
     full_code = 'python -c "%s%s"' % (setup, code.replace("`", "\\\`"))
     with project():
         result = run(full_code, show=False)
@@ -862,7 +864,7 @@ def createapp1():
 @task
 @roles('application','cron')
 @parallel
-def createapp2():
+def createapp2(is_new=False):
     """
     Continuation of create. Used if the database already exists. Upload certificate and site name.
     """
@@ -899,12 +901,12 @@ def createapp2():
                "import sys;"
                "sys.path.append(os.path.abspath('..'));"
                "Site.objects.filter(id=settings.SITE_ID).update(domain='%s');"
-               % env.domains[0])
+               % (env.domains[0],), is_new=is_new)
         for domain in env.domains:
             python("from django.contrib.sites.models import Site;"
                    "import sys;"
                    "sys.path.append(os.path.abspath('..'));"
-                   "Site.objects.get_or_create(domain='%s');" % domain)
+                   "Site.objects.get_or_create(domain='%s');" % (domain,), is_new=is_new)
         if env.admin_pass:
             pw = env.admin_pass
             user_py = ("from mezzanine.utils.models import get_user_model;"
@@ -915,9 +917,10 @@ def createapp2():
                        "u.is_staff = u.is_superuser = True;"
                        "u.set_password('%s');"
                        "u.save();" % pw)
-            python(user_py, show=False)
+            python(user_py, show=False, is_new=is_new)
             shadowed = "*" * len(pw)
             print_command(user_py.replace("'%s'" % pw, "'%s'" % shadowed))
+
 
 def get_private_db_host_from_public_host():
     if not env.host_string in env.database_hosts:
@@ -952,6 +955,7 @@ def write_postgres_conf():
 
     modify_config_file("/etc/postgresql/9.2/main/postgresql.conf", postgres_conf, use_sudo=True)
     sudo("chown postgres /etc/postgresql/9.2/main/postgresql.conf")
+
 
 def write_hba_conf():
     client_list = [('host', env.proj_name, env.proj_name, '%s/32' % client, 'md5') for client in env.private_application_hosts]

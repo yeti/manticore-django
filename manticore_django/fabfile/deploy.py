@@ -752,11 +752,12 @@ def install_prereq():
 @parallel
 @roles('application','cron')
 def installapp():
-    put(StringIO("deb http://www.rabbitmq.com/debian/ testing main"), "/etc/apt/sources.list.d/rabbitmq.list", use_sudo=True)
-    sudo("wget --quiet -O - http://www.rabbitmq.com/rabbitmq-signing-key-public.asc | sudo apt-key add -")
     sudo("apt-get update")
     apt("nginx libjpeg-dev python-dev python-setuptools "
-        "memcached libffi-dev rabbitmq-server")
+        "memcached libffi-dev erlang-nox")
+    run("wget http://www.rabbitmq.com/releases/rabbitmq-server/v2.8.4/rabbitmq-server_2.8.4-1_all.deb")
+    sudo("dpkg -i rabbitmq-server_2.8.4-1_all.deb")
+
     sudo("easy_install pip")
     sudo("pip install virtualenv --no-use-wheel")
     apt(" ".join(env.apt_requirements))

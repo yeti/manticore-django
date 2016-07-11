@@ -1315,6 +1315,10 @@ def deployapp2(collect_static=True):
             if env.bower:
                 run("bower install --allow-root")
 
+            with cd("meterclient/static"):
+                run("npm install")
+                run("tsc")
+
             manage("collectstatic -v 0 --noinput", True)
 
             # TODO: move this to a task that runs locally instead of on all application/cron servers
@@ -1323,7 +1327,7 @@ def deployapp2(collect_static=True):
                 # TODO: use this only if using Rackspace's cloudfiles
                 # manage("syncfiles -e'media/' --static")
 
-        manage("syncdb --noinput")
+        # manage("syncdb --noinput")
         manage("migrate --noinput")
     restartapp()
     restart_celery()

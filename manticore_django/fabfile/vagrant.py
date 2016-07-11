@@ -225,8 +225,9 @@ def create_project(is_new=False):
 @roles('application')
 def init_db():
     with project():
-        manage("syncdb --noinput")
-        manage("migrate")
+        with settings(warn_only=True):
+            manage("syncdb --noinput")
+            manage("migrate")
 
 
 @roles('application')

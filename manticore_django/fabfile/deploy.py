@@ -1323,7 +1323,8 @@ def deployapp2(collect_static=True):
                 # TODO: use this only if using Rackspace's cloudfiles
                 # manage("syncfiles -e'media/' --static")
 
-        manage("syncdb --noinput")
+        # No longer exists, but may be used for legacy projects
+        # manage("syncdb --noinput")
         manage("migrate --noinput")
     restartapp()
     restart_celery()

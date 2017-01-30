@@ -135,7 +135,7 @@ def create_vagrantfile():
         if not confirm("Vagrant file already exists, continue anyways?"):
             return False
     else:
-        local("vagrant init wheezy https://www.dropbox.com/s/t22df7cl0xoiv3t/debian-7.2.0.box?dl=1")
+        local("vagrant init wheezy https://www.dropbox.com/s/qbpsjs0lh5e0yk8/debian-7.2.0.box?dl=1")
         # TODO: `:forwarded_port` is now "forwarded_port" with new version of vagrant
         local("sed 's/# config.vm.network \"forwarded_port\", guest: 80, host: 8080/config.vm.network \"forwarded_port\", guest: 8000, host: 8000/g' Vagrantfile > Vagrantfile.tmp")
         local("mv Vagrantfile.tmp Vagrantfile")

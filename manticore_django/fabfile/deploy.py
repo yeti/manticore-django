@@ -1386,9 +1386,52 @@ def clear_cache():
     python("from django.core.cache import cache;"
            "cache.clear();")
 
+
+#########################################################
+# Commands to backup production and restore on staging  #
+#########################################################
+
+
+@task
+@log_call
+@roles("database")
+def get_db_backup():
+    """
+    Back up the database and copy it locally
+    """
+    with cd("/tmp"):
+        filename = "last-{}.db".format(env.proj_name)
+        backup(filename)
+        get(filename, "./{}-{}".format(env.mode, filename))
+
+
+@task
+@log_call
+@roles("database")
+def restore_local_db_backup():
+    """
+    Upload local copy of the db and restore on the server's database
+    """
+    if not confirm("Warning, this will overwrite your database. Do you want to do this?") or env.mode == "production":
+        print("Aborting, either you said no or you're pointing to production.")
+        return
+
+    filename = raw_input("\nWhat's the name of your local db backup? (ex. production-last-encompass.db) ")
+    if not os.path.exists(filename):
+        print("Sorry, filename {}, does not exist.".format(filename))
+        return
+
+    remote_path = "/tmp/{}".format(filename)
+    put(filename, remote_path)
+    postgres("dropdb encompass")
+    postgres("createdb encompass")
+    restore(remote_path)
+
+
 #########################
 # Backup and restore    #
 #########################
+
 
 @task
 @log_call
@@ -1399,6 +1442,7 @@ def backupdb():
     """
     with cd(env.venv_path):
         backup("last-%s.db" % env.proj_name)
+
 
 @task
 @log_call

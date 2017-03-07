@@ -1299,6 +1299,10 @@ def deployapp2(collect_static=True):
         last_commit = "git rev-parse HEAD" if git else "hg id -i"
         sudo("%s > last.commit" % last_commit)
         with update_changed_requirements():
+            # Reset edited templates from cache-busting so that "git pull" does not fail due to local changes
+            run("git checkout brochure/templates/base.html")
+            run("git checkout meterclient/templates/angular.html")
+
             # If we have a deployed ssh key, use that for pulling from git
             if env.deploy_ssh_key_path and env.deploy_ssh_key_path != "":
                 ssh_key_name = os.path.basename(env.deploy_ssh_key_path)

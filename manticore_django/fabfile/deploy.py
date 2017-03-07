@@ -4,6 +4,7 @@ import sys
 from getpass import getpass, getuser
 from glob import glob
 from contextlib import contextmanager
+
 from posixpath import join
 import tempfile
 from StringIO import StringIO
@@ -17,6 +18,10 @@ from fabric.colors import red
 from fabric.utils import *
 import simplejson
 from utils import log_call, pip, print_command, sudo, project
+
+
+
+
 
 ################
 # Config setup #
@@ -1429,7 +1434,16 @@ def restore_local_db_backup():
     put(filename, remote_path)
     postgres("dropdb encompass")
     postgres("createdb encompass")
-    restore(remote_path)
+    execute(createdb_extensions)
+    with settings(warn_only=True):
+        restore(remote_path)
+
+    if confirm("Would you like to update the sites table to dev.encompass.io?"):
+        python("from django.conf import settings;"
+               "from django.contrib.sites.models import Site;"
+               "import sys;"
+               "sys.path.append(os.path.abspath('..'));"
+               "Site.objects.update(domain='dev.encompass.io');")
 
 
 #########################

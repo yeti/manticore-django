@@ -834,7 +834,7 @@ def upgrade_nodejs():
     """
     sudo("npm cache clean -f")
     sudo("npm install -g n")
-    sudo("n stable")
+    sudo("n 7.6.0")
 
 @task
 @parallel
@@ -843,7 +843,7 @@ def install_electroshot():
     """
         Installs electroshot npm package.
     """
-    sudo("npm install -g electroshot")
+    sudo("npm install -g electroshot@1.3.0")
 
 #########################
 # Create                #

@@ -815,6 +815,36 @@ def install_phantom_js():
     sudo("mv phantomjs-1.9.8-linux-x86_64 /usr/lib")
     sudo("ln -s /usr/lib/phantomjs-1.9.8-linux-x86_64/bin/phantomjs /usr/bin/.")
 
+@task
+@parallel
+@roles('application', 'cron')
+def uninstall_phantom_js():
+    """
+        Removes phantomjs symlink and phantomjs package.
+    """
+    sudo("rm /usr/bin/phantomjs")
+    sudo("rm -rf /usr/lib/phantomjs-1.9.8-linux-x86_64")
+
+@task
+@parallel
+@roles('application', 'cron')
+def upgrade_nodejs():
+    """
+        Upgrades Node.js to the latest stable version.
+    """
+    sudo("npm cache clean -f")
+    sudo("npm install -g n")
+    sudo("n stable")
+
+@task
+@parallel
+@roles('application', 'cron')
+def install_electroshot():
+    """
+        Installs electroshot npm package.
+    """
+    sudo("npm install -g electroshot")
+
 #########################
 # Create                #
 #########################

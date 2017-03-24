@@ -839,6 +839,15 @@ def upgrade_nodejs():
 @task
 @parallel
 @roles('application', 'cron')
+def install_xvfb():
+    """
+        Installs Xvfb debian package.
+    """
+    sudo("apt-get install xvfb=2:1.12.4-6+deb7u6")
+
+@task
+@parallel
+@roles('application', 'cron')
 def install_electroshot():
     """
         Installs electroshot npm package.

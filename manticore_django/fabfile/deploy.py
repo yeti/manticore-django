@@ -97,6 +97,8 @@ def load_environment(conf, show_info):
     env.domains_nginx = " ".join(env.domains)
     env.domains_python = ", ".join(["'%s'" % s for s in env.domains])
     env.ssl_disabled = "#" if len(env.domains) > 1 or conf.get("SSL_DISABLED", True) else ""
+    env.ssl_key_disabled = "#" if len(env.domains) > 1 or conf.get("SSL_KEY_DISABLED", True) else ""
+    env.ssl_key_enabled = "" if len(env.domains) > 1 or conf.get("SSL_KEY_DISABLED", True) else "#"
     env.redirect = "" if conf.get("REDIRECT", False) else "#"
     env.compress = conf.get("COMPRESS", False)
     env.sitename = conf.get("SITENAME", "Default")

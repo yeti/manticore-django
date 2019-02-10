@@ -766,7 +766,7 @@ def installapp():
     sudo("dpkg -i rabbitmq-server_2.8.4-1_all.deb")
 
     sudo("easy_install pip")
-    sudo("pip install virtualenv --no-use-wheel")
+    sudo("pip install virtualenv --index-url https://pypi.org/simple")
     apt(" ".join(env.apt_requirements))
 
 @task
@@ -837,6 +837,24 @@ def upgrade_nodejs():
     sudo("npm cache clean -f")
     sudo("npm install -g n")
     sudo("n 7.6.0")
+
+@task
+@parallel
+@roles('application', 'cron')
+def install_nvm_lts():
+    """
+        Installs nvm --lts
+    """
+    sudo("nvm install --lts")
+
+@task
+@parallel
+@roles('application', 'cron')
+def install_angular_cli():
+    """
+        Installs Angular CLI
+    """
+    sudo("npm install -g @angular/cli")
 
 @task
 @parallel
@@ -1365,10 +1383,11 @@ def deployapp2(collect_static=True):
             if env.bower:
                 run("bower install --allow-root")
 
-            with cd("meterclient/static"):
+            with cd("meterclient/meterclient-ng"):
                 run("npm install")
-                run("tsc")
-                run("npm run build:prod")
+                run("nvm use --lts")
+                run("ng build app-tsc")
+                run("ng build pdf-app-tsc")
 
             manage("collectstatic -v 0 --noinput", True)
 

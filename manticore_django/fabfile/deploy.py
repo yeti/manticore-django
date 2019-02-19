@@ -1379,15 +1379,17 @@ def deployapp2(collect_static=True):
         run("git submodule sync")
         run("git submodule update")
         if env.mode != "vagrant" and collect_static:
+            # Note: 2/19/2019 - [Alex] Doesn't look like we're using bower?
+            # Commenting out since the build started breaking here for some reason
             # If we're using bower, make sure we install our javascript files before collecting static and compressing
-            if env.bower:
-                run("bower install --allow-root")
+            # if env.bower:
+            #     run("bower install --allow-root")
 
             with cd("meterclient/meterclient-ng"):
                 run("npm install")
-                run("nvm use --lts")
-                run("ng build app-tsc")
-                run("ng build pdf-app-tsc")
+                run("nvm use --lts")  # Note: Do we even need "nvm use lts?
+                run("npm run build:prod:web")
+                run("npm run build:prod:pdf")
 
             manage("collectstatic -v 0 --noinput", True)
 

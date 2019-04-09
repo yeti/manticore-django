@@ -766,7 +766,7 @@ def installapp():
     sudo("dpkg -i rabbitmq-server_2.8.4-1_all.deb")
 
     sudo("easy_install pip")
-    sudo("pip install virtualenv --no-use-wheel")
+    sudo("pip install virtualenv --index-url https://pypi.org/simple")
     apt(" ".join(env.apt_requirements))
 
 @task
@@ -837,6 +837,24 @@ def upgrade_nodejs():
     sudo("npm cache clean -f")
     sudo("npm install -g n")
     sudo("n 7.6.0")
+
+@task
+@parallel
+@roles('application', 'cron')
+def install_nvm_lts():
+    """
+        Installs nvm --lts
+    """
+    sudo("nvm install --lts")
+
+@task
+@parallel
+@roles('application', 'cron')
+def install_angular_cli():
+    """
+        Installs Angular CLI
+    """
+    sudo("npm install -g @angular/cli")
 
 @task
 @parallel
@@ -1361,14 +1379,17 @@ def deployapp2(collect_static=True):
         run("git submodule sync")
         run("git submodule update")
         if env.mode != "vagrant" and collect_static:
+            # Note: 2/19/2019 - [Alex] Doesn't look like we're using bower?
+            # Commenting out since the build started breaking here for some reason
             # If we're using bower, make sure we install our javascript files before collecting static and compressing
-            if env.bower:
-                run("bower install --allow-root")
+            # if env.bower:
+            #     run("bower install --allow-root")
 
-            with cd("meterclient/static"):
+            with cd("meterclient/meterclient-ng"):
                 run("npm install")
-                run("tsc")
-                run("npm run build:prod")
+                run("nvm use --lts")  # Note: Do we even need "nvm use lts?
+                run("npm run build:prod:web")
+                run("npm run build:prod:pdf")
 
             manage("collectstatic -v 0 --noinput", True)
 

@@ -865,6 +865,8 @@ def install_angular_cli():
     """
     sudo("npm install -g @angular/cli")
 
+# TODO: Add task to run `nvm install 10.15.1`
+
 @task
 @parallel
 @roles('application', 'cron')
@@ -1375,6 +1377,7 @@ def deployapp2(collect_static=True):
             # Reset edited templates from cache-busting so that "git pull" does not fail due to local changes
             run("git checkout brochure/templates/base.html")
             run("git checkout meterclient/templates/angular.html")
+            run("git checkout meterclient/templates/pdf.html")
 
             # If we have a deployed ssh key, use that for pulling from git
             if env.deploy_ssh_key_path and env.deploy_ssh_key_path != "":
@@ -1635,8 +1638,15 @@ def development(show_info=False):
 @log_call
 def staging(show_info=False):
     env.mode = "staging"
+    env.site_url = 'dev.encompass.io'
     load_environment(env.settings[env.mode], show_info)
 
+@task
+@log_call
+def feature_staging(show_info=False):
+    env.mode = "feature_staging"
+    env.site_url = 'feature-staging.encompass.io'
+    load_environment(env.settings[env.mode], show_info)
 
 @task
 @log_call

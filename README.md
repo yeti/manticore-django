@@ -19,7 +19,7 @@ Setup for:
   * Master and slave Postgres server with Streaming Replication
 
 * Multiple target deployment
-  * Supports targets for *development* (default), *staging*, and *production*
+  * Supports targets for *development* (default), *staging*, *feature_staging*, and *production*
 
 * Vagrant+Pycharm support
   * Creating and cloning local projects
@@ -64,6 +64,7 @@ These requirements should be listed in your `requirements/requirements.txt` file
     * `deploy/development_settings.py`, 
     * `deploy/production_settings.py`, 
     * `deploy/staging_settings.py`
+    * `deploy/feature_staging_settings.py`
   d. add `deploy/celeryd.conf`. See the next section for details.
 
 Your directory structure should look like:
@@ -76,6 +77,7 @@ Your directory structure should look like:
   * **development_settings.py**
   * **production_settings.py**
   * **staging_settings.py**
+  * **feature_staging_settings.py**
   * supervisor.conf
 * manage.py
 * local_settings.py
@@ -107,6 +109,7 @@ Subsequently, you can reploy using:
 1. `fab deploy.development ...`
 2. `fab deploy.staging ...`
 3. `fab deploy.production ...`
+4. `fab deploy.feature_staging ...`
 
 The **development** environment (1) is default.
 
@@ -115,6 +118,7 @@ If something isn't working right and you want to know why, pass in a parameter `
 1. `fab deploy.development:True`
 2. `fab deploy.staging:True`
 3. `fab deploy.production:True`
+4. `fab deploy.feature_staging:True`
 
 
 Script Configuration
@@ -154,17 +158,20 @@ In your `fabric_settings.py` file:
             "staging": {
                  ...
             },
+            "feature_staging": {
+                 ...
+            },
             "production" : {
                 ...
             }
         }
 
 
-### `deploy/development_settings.py`, `deploy/staging_settings.py`, and `deploy/production_settings.py`
+### `deploy/development_settings.py`, `deploy/staging_settings.py`, `deploy/feature_staging_settings.py`, and `deploy/production_settings.py`
 
 Create server-specific settings for each of the specified targets:
 * `deploy/development_settings.py`, 
-* `deploy/staging_settings.py`, and 
+* `deploy/staging_settings.py`, `deploy/feature_staging_settings`, and 
 * `deploy/production_settings.py`:
 
         DATABASES = {

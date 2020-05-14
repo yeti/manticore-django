@@ -216,6 +216,7 @@ def create_project(is_new=False):
 
         run("cp deploy/local_settings.py.template deploy/development_settings.py")
         run("cp deploy/local_settings.py.template deploy/staging_settings.py")
+        run("cp deploy/local_settings.py.template deploy/feature_staging_settings.py")
         run("cp deploy/local_settings.py.template deploy/production_settings.py")
         run("rm deploy/local_settings.py.template")
 

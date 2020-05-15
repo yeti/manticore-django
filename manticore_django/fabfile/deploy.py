@@ -1652,6 +1652,7 @@ def feature_staging(show_info=False):
 @log_call
 def production(show_info=False):
     env.mode = "production"
+    env.site_url = 'encompass.io'
     load_environment(env.settings[env.mode], show_info)
 
 ########################

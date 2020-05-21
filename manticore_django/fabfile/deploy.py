@@ -850,11 +850,22 @@ def install_nvm_lts():
 @task
 @parallel
 @roles('application', 'cron')
+def reset_node_version():
+    """
+        Sets Node to 6.9.5
+    """
+    sudo("nvm use v6.9.5")
+
+@task
+@parallel
+@roles('application', 'cron')
 def install_angular_cli():
     """
         Installs Angular CLI
     """
     sudo("npm install -g @angular/cli")
+
+# TODO: Add task to run `nvm install 10.15.1`
 
 @task
 @parallel
@@ -1366,6 +1377,7 @@ def deployapp2(collect_static=True):
             # Reset edited templates from cache-busting so that "git pull" does not fail due to local changes
             run("git checkout brochure/templates/base.html")
             run("git checkout meterclient/templates/angular.html")
+            run("git checkout meterclient/templates/pdf.html")
 
             # If we have a deployed ssh key, use that for pulling from git
             if env.deploy_ssh_key_path and env.deploy_ssh_key_path != "":
@@ -1387,9 +1399,10 @@ def deployapp2(collect_static=True):
 
             with cd("meterclient/meterclient-ng"):
                 run("npm install")
-                run("nvm use --lts")  # Note: Do we even need "nvm use lts?
+                run("nvm alias default v10.15.1")  # Note: Do we even need "nvm use lts?
                 run("npm run build:prod:web")
                 run("npm run build:prod:pdf")
+                run("nvm alias default v6.9.5")
 
             manage("collectstatic -v 0 --noinput", True)
 
@@ -1625,13 +1638,21 @@ def development(show_info=False):
 @log_call
 def staging(show_info=False):
     env.mode = "staging"
+    env.site_url = 'dev.encompass.io'
     load_environment(env.settings[env.mode], show_info)
 
+@task
+@log_call
+def feature_staging(show_info=False):
+    env.mode = "feature_staging"
+    env.site_url = 'feature-staging.encompass.io'
+    load_environment(env.settings[env.mode], show_info)
 
 @task
 @log_call
 def production(show_info=False):
     env.mode = "production"
+    env.site_url = 'encompass.io'
     load_environment(env.settings[env.mode], show_info)
 
 ########################
